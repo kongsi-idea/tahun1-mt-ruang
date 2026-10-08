@@ -6,7 +6,8 @@ import { OBJECTS } from './objects.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 
 const rad = THREE.MathUtils.degToRad;
-const home = () => { const narrow = stage.size.w / stage.size.h < 1.25; return { target: new THREE.Vector3(0, narrow ? 0.4 : 0.85, 0), sph: new THREE.Spherical(narrow ? 6.6 : 7.6, rad(66), rad(35)) }; };
+// 正方棱锥体用较高的俯角，否则正方形底面压成一条线，看起来像三角锥（2026-10-08 缩图检查发现）
+const home = () => { const narrow = stage.size.w / stage.size.h < 1.25, pyr = shape && shape.id === 'pyramid'; return { target: new THREE.Vector3(0, narrow ? 0.4 : 0.85, 0), sph: new THREE.Spherical(narrow ? 6.6 : 7.6, rad(pyr ? 54 : 66), rad(pyr ? 18 : 35)) }; };
 const KIND = { face: { zh: '面', unit: '个', ico: '面' }, edge: { zh: '边', unit: '条' }, vert: { zh: '顶点', unit: '个' } };
 const CREAM = new THREE.Color('#FFF4DC');
 const FINGER = '<svg class="finger" viewBox="0 0 84 84"><rect x="32" y="4" width="22" height="48" rx="11" fill="#fff" stroke="#3B2A1A" stroke-width="5"/><rect x="14" y="40" width="58" height="40" rx="16" fill="#fff" stroke="#3B2A1A" stroke-width="5"/></svg>';
