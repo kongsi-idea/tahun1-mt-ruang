@@ -71,12 +71,12 @@ function gridMesh(NS, NW, color) {
   }
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(ind);
   const m = new THREE.Mesh(g, faceMaterial(color, { side: THREE.DoubleSide }));
-  m.castShadow = true; m.frustumCulled = false;
+  m.castShadow = false; m.frustumCulled = false; // 卷曲的网格不投影（改用接触阴影，避免影子与实际形状对不上）
   return m;
 }
 function flatDisc(r, color) {
   const geo = new THREE.CircleGeometry(r, 96); geo.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(geo, faceMaterial(color, { side: THREE.DoubleSide })); m.castShadow = true; return m;
+  const m = new THREE.Mesh(geo, faceMaterial(color, { side: THREE.DoubleSide })); m.castShadow = false; return m;
 }
 
 // ═══════════ 多面体 ═══════════
@@ -152,7 +152,7 @@ export function buildCylinderNet() {
     const n = p(b).sub(p(a)).cross(p(c).sub(p(a))), out = p(a); out.y = 0;
     if (n.dot(out) < 0) { const arr = lat.geometry.index.array; for (let t = 0; t < arr.length; t += 3) { const x = arr[t + 1]; arr[t + 1] = arr[t + 2]; arr[t + 2] = x; } lat.geometry.index.needsUpdate = true; } }
   const obj = {
-    kind: 'cyl', group, p: 0, solidCenter: V(0, h / 2, 0),
+    kind: 'cyl', foot: r, group, p: 0, solidCenter: V(0, h / 2, 0),
     bounds: { u0: -L / 2, u1: L / 2, v0: -r, v1: r + h + 2 * r, cu: 0, cv: (-r + r + h + 2 * r) / 2, w: L, h: h + 4 * r },
     setP(p) {
       obj.p = p;
@@ -212,7 +212,7 @@ export function buildConeNet() {
     if (n.dot(out) < 0) { const arr = lat.geometry.index.array; for (let t = 0; t < arr.length; t += 3) { const x = arr[t + 1]; arr[t + 1] = arr[t + 2]; arr[t + 2] = x; } lat.geometry.index.needsUpdate = true; } }
   const apexClosed = V(0, h, 0);
   const obj = {
-    kind: 'cone', group, p: 0, solidCenter: V(0, h / 2, 0), minY: 0,
+    kind: 'cone', foot: r, group, p: 0, solidCenter: V(0, h / 2, 0), minY: 0,
     bounds: { u0: -l * Math.sin(theta / 2), u1: l * Math.sin(theta / 2), v0: -r, v1: r + l, cu: 0, cv: (-r + r + l) / 2, w: 2 * l * Math.sin(theta / 2), h: l + 2 * r },
     setP(p) {
       obj.p = p; const u = ease(clamp01(p)), F = frame(shape(u));

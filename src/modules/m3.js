@@ -13,9 +13,9 @@ const PLANE_SHAPES = ['square', 'rect', 'tri', 'circle'], SOLID_SHAPES = ['cube'
 // 形状相似的一组：放在同一题里更难
 const SIMILAR = { plane: [['square', 'rect']], solid: [['cube', 'cuboid'], ['cone', 'pyramid']] };
 const SIZES = [0.62, 0.8, 1];
-const PITCH = 1.85, SC = 0.56; // 立体排列的间距、立体统一缩放
+const PITCH = 1.68, SC = 0.56; // 立体排列的间距、立体统一缩放
 // 立体一行排：正交相机（远近一样大），所有立体站在同一条底线上，同一种立体在每个位置看起来完全一样
-const AZ = (28 * Math.PI) / 180, PHI = (66 * Math.PI) / 180;
+const AZ = (30 * Math.PI) / 180, PHI = (68 * Math.PI) / 180; // 方位 30°、仰角 22°：3/4 略俯视
 const VIEW = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, PHI, AZ));
 const RIGHT = new THREE.Vector3(Math.cos(AZ), 0, -Math.sin(AZ)), FWD = new THREE.Vector3(Math.sin(AZ), 0, Math.cos(AZ));
 const SH = 0.76; // 底线放在立体底面最前面的位置
@@ -241,8 +241,8 @@ function showSeq(v) {
   if (!gl) { seqEl.style.display = ''; seqEl.innerHTML = '<div class="seq-label">3D 画面打不开，换一个浏览器试试。</div>'; return; }
   const hasOpt = !!v.options, optK = 7.4;
   const asp = stage.size.w / stage.size.h;
-  const needW = Math.max(total, hasOpt ? 3 * 1.5 : 0) * PITCH + 0.6;
-  const H = Math.max(needW / asp, hasOpt ? 8.8 : 3.8);
+  const needW = Math.max(total, hasOpt ? 3 * 1.5 : 0) * PITCH + 0.3;
+  const H = Math.max(needW / asp, hasOpt ? 7.6 : 3.2);
   stage.setOrtho(true, H);
   const target = new THREE.Vector3(0, 0.15, 0).addScaledVector(FWD, hasOpt ? optK / 2 : 0);
   const hv = { target, sph: new THREE.Spherical(40, PHI, AZ) };
@@ -272,6 +272,15 @@ function showSeq(v) {
     const f0 = op[0].clone().addScaledVector(RIGHT, -PITCH * 0.75).addScaledVector(FWD, SH), f1 = op[n - 1].clone().addScaledVector(RIGHT, PITCH * 0.75).addScaledVector(FWD, SH);
     shelf([f0.x, 0, f0.z], [f1.x, 0, f1.z]);
     stage.overlay.onclick = (e) => { const b = e.target.closest('[data-opt]'); if (b) onOption(+b.dataset.opt); };
+  }
+  // 整行（立体＋底线＋序号，练习时加选项行）在 3D 区垂直置中
+  {
+    stage.camera.updateMatrixWorld();
+    const mid = pos[Math.floor(total / 2)], yTop = stage.project(new THREE.Vector3(mid.x, 1.55, mid.z)).y;
+    const last = hasOpt ? at(1, 3, 1) : mid, yBot = stage.project(new THREE.Vector3(last.x + FWD.x * SH, 0, last.z + FWD.z * SH)).y + (hasOpt ? 70 : 36);
+    const delta = (yTop + yBot) / 2 - stage.size.h / 2;
+    const up = new THREE.Vector3().setFromMatrixColumn(stage.camera.matrixWorld, 1);
+    hv.target.addScaledVector(up, -delta / unitPx); stage.place(hv.target, hv.sph);
   }
   if (v.why && L) {
     for (let g = 0; g * L < total; g++) {

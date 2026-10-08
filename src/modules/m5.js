@@ -368,6 +368,8 @@ function gframe(now) {
   }
   G.obj.update(stage.camera);
   stage.cornerSegs = G.obj.segs();
+  // 卷曲的圆柱／圆锥：只在合起来时有圆形接触阴影，跟立体图形页一样
+  if (G.obj.foot) stage.setFootprint(G.obj.foot, G.obj.foot, Math.max(0, (G.p - 0.55) / 0.45));
 }
 const gIsOpen = () => G && G.to < 0.5;
 function thumbSVG(item, solid, on) {
