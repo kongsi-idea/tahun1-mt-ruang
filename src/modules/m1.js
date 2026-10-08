@@ -5,7 +5,7 @@ import { buildShape, SHAPE_IDS, NAMES } from './shapes.js';
 import { OBJECTS } from './objects.js';
 
 const rad = THREE.MathUtils.degToRad;
-const home = () => ({ target: new THREE.Vector3(0, 0.85, 0), sph: new THREE.Spherical(stage.size.w / stage.size.h < 1.25 ? 6.6 : 7.6, rad(66), rad(35)) });
+const home = () => { const narrow = stage.size.w / stage.size.h < 1.25; return { target: new THREE.Vector3(0, narrow ? 0.4 : 0.85, 0), sph: new THREE.Spherical(narrow ? 6.6 : 7.6, rad(66), rad(35)) }; };
 const KIND = { face: { zh: '面', unit: '个', ico: '面' }, edge: { zh: '边', unit: '条' }, vert: { zh: '顶点', unit: '个' } };
 const CREAM = new THREE.Color('#FFF4DC');
 const FINGER = '<svg class="finger" viewBox="0 0 84 84"><rect x="32" y="4" width="22" height="48" rx="11" fill="#fff" stroke="#3B2A1A" stroke-width="5"/><rect x="14" y="40" width="58" height="40" rx="16" fill="#fff" stroke="#3B2A1A" stroke-width="5"/></svg>';
@@ -108,7 +108,7 @@ const all = () => { if (S.mode) { S.n = total(S.mode); S.cur = -1; applyMarks();
 
 // ———— 画面 ————
 function nameTag() {
-  const t = host.querySelector('.tag') || host.appendChild(Object.assign(document.createElement('div'), { className: 'tag' }));
+  const t = host.querySelector('.tag') || (host.querySelector('.cv') || host).appendChild(Object.assign(document.createElement('div'), { className: 'tag' }));
   const show = S.tab === 'know' && (S.name || (ctxRef.getMode() === 'practice' && S.q?.done));
   t.className = 'tag' + (show ? '' : ' hidden');
   t.textContent = show ? shape.name : '这是什么立体？';
