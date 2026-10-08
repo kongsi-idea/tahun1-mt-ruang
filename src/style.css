@@ -328,3 +328,13 @@ button{font:inherit;color:inherit;cursor:pointer}
 .stage.svg-only{background:#FFFBF0}
 .row2 .btn{min-width:0}
 .badge.ext.fun{background:var(--orange);color:var(--ink)}
+
+/* 模式排列：一行、等大、等距、同底线，每格下面有序号 */
+.seq .row.one{flex-wrap:nowrap;gap:0;align-items:flex-end;justify-content:center}
+.seq .cw{flex:none;display:flex;flex-direction:column;align-items:center}
+.seq .cw .it{width:100%;height:var(--is);border-bottom:6px solid var(--ink);background:transparent}
+.seq .cw .it.qm{border:4px dashed var(--ink);border-bottom:6px solid var(--ink);background:#fff}
+.seq .cw .no,.no3{font-size:22px;font-weight:900;line-height:1;margin-top:6px;min-width:30px;text-align:center}
+.no3{position:absolute;left:0;top:0;margin:0;pointer-events:none;color:var(--ink);background:#fff;border:3px solid var(--ink);border-radius:15px;height:30px;padding:3px 0 0}
+.shelf3{position:absolute;background:var(--ink);pointer-events:none}
+.stage.fixedview .stage-bar{display:none!important}

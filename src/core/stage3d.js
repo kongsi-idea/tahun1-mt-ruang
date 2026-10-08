@@ -34,11 +34,10 @@ class Stage3D {
     r.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-    this.controls = new OrbitControls(this.camera, r.domElement);
-    const c = this.controls;
-    c.enableDamping = true; c.dampingFactor = 0.12; c.enablePan = false;
-    c.minDistance = 3.5; c.maxDistance = 14; c.rotateSpeed = 0.9; c.autoRotateSpeed = 2.4;
+    this.persp = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+    this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+    this.camera = this.persp; this.isOrtho = false; this.orthoH = 6;
+    this._makeControls();
     r.domElement.style.touchAction = 'none';
     // 灯光：半球光＋方向光（背光面亮度 ≥ 原色约 80%）
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xfff0d0, 3.3));
@@ -68,6 +67,23 @@ class Stage3D {
     return true;
   }
 
+  _makeControls() {
+    this.controls?.dispose();
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    const c = this.controls;
+    c.enableDamping = true; c.dampingFactor = 0.12; c.enablePan = false;
+    c.minDistance = 3.5; c.maxDistance = 14; c.rotateSpeed = 0.9; c.autoRotateSpeed = 2.4;
+  }
+  // 正交相机：远近一样大（模式排列的立体用）。h = 画面竖向可见的世界高度
+  setOrtho(on, h = 6) {
+    this.orthoH = h;
+    if (on !== this.isOrtho) {
+      this.isOrtho = on; this.camera = on ? this.ortho : this.persp;
+      this._makeControls(); this.fly = null;
+    }
+    this.resize();
+  }
+
   // host: 放画布的元素。返回 { ok }。toolbar 按钮建在 host 内。
   mount(host, { home, onFrame } = {}) {
     this.host = host;
@@ -89,6 +105,7 @@ class Stage3D {
     this.home = home; this.fly = null;
     this.controls.enabled = true; this.controls.autoRotate = false; this.controls.maxDistance = 14; this.controls.minDistance = 3.5;
     this.cornerSegs = [];
+    if (this.isOrtho) this.setOrtho(false);
     this.mounted = true; this.paused = false;
     this._ro = new ResizeObserver(() => this.resize());
     this._ro.observe(this.cv); this._ro.observe(this.renderer.domElement);
@@ -154,9 +171,14 @@ class Stage3D {
     const w = Math.max(cs.clientWidth || this.cv.clientWidth, 1), h = Math.max(cs.clientHeight || this.cv.clientHeight, 1);
     this.size = { w, h };
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    // 窄（竖屏）画面：拉远一点，让模型完整入镜
-    this.camera.fov = w / h < 0.9 ? 32 / Math.max(w / h, 0.55) * 0.9 : 32;
+    if (this.isOrtho) {
+      const H = this.orthoH, W = H * (w / h);
+      Object.assign(this.ortho, { left: -W / 2, right: W / 2, top: H / 2, bottom: -H / 2 });
+    } else {
+      this.camera.aspect = w / h;
+      // 窄（竖屏）画面：拉远一点，让模型完整入镜
+      this.camera.fov = w / h < 0.9 ? 32 / Math.max(w / h, 0.55) * 0.9 : 32;
+    }
     this.camera.updateProjectionMatrix();
     setResolution(w, h);
   }

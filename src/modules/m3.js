@@ -13,7 +13,13 @@ const PLANE_SHAPES = ['square', 'rect', 'tri', 'circle'], SOLID_SHAPES = ['cube'
 // 形状相似的一组：放在同一题里更难
 const SIMILAR = { plane: [['square', 'rect']], solid: [['cube', 'cuboid'], ['cone', 'pyramid']] };
 const SIZES = [0.62, 0.8, 1];
-const PITCH = 1.9; // 立体排列的间距
+const PITCH = 1.85, SC = 0.56; // 立体排列的间距、立体统一缩放
+// 立体一行排：正交相机（远近一样大），所有立体站在同一条底线上，同一种立体在每个位置看起来完全一样
+const AZ = (28 * Math.PI) / 180, PHI = (66 * Math.PI) / 180;
+const VIEW = new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, PHI, AZ));
+const RIGHT = new THREE.Vector3(Math.cos(AZ), 0, -Math.sin(AZ)), FWD = new THREE.Vector3(Math.sin(AZ), 0, Math.cos(AZ));
+const SH = 0.76; // 底线放在立体底面最前面的位置
+const MIN_CELL = 50; // 每格至少这么宽（像素），放不下就减少显示个数
 const SNAME = { square: '正方形', circle: '圆形', tri: '三角形', rect: '长方形', cube: '正方体', cuboid: '长方体', pyramid: '正方棱锥体', sphere: '球体', cone: '圆锥体', cylinder: '圆柱体' };
 const CNAME = { '#F2564B': '红色', '#FFC93C': '黄色', '#3E8EDE': '蓝色', '#46B97A': '绿色', '#FF8A3D': '橙色', '#8E6BD8': '紫色' };
 const TYPE_NAME = { shape: '形状' };
@@ -71,7 +77,7 @@ function makeOptions(kind, level, answer, syms, color) {
   return opts.slice(0, 3);
 }
 
-export function genQuestion(kind, level) {
+export function genQuestion(kind, level, maxCells = 10) {
   const pats = level === 1 ? ['ABAB', 'AAB', 'ABB'] : ['ABAB', 'AAB', 'ABB', 'ABC', 'AABB'];
   for (let tries = 0; tries < 400; tries++) {
     const pat = pick(pats), unit = PATTERNS[pat], L = unit.length, letters = [...new Set(unit)].sort();
@@ -80,8 +86,10 @@ export function genQuestion(kind, level) {
     const syms = shapes.map((sh) => mkItem(sh, color));
     const sym = (ch) => syms[letters.indexOf(ch)];
     // 长度：level 1 最短；level 2 中等；level 3 更长
-    const maxN = kind === 'plane' ? 9 : 7; // 立体一排放不下太多，最多显示 7 个
-    const lo = level === 1 ? 2 * L : level === 2 ? 2 * L : 2 * L + 1, hi = Math.min(level === 1 ? 2 * L + 1 : level === 2 ? Math.max(2 * L, 7) : 9, maxN);
+    const maxN = Math.min(9, maxCells - 1); // 只排一行：放得下才出（「？」也占一格）
+    const hi = Math.min(level === 1 ? 2 * L + 1 : level === 2 ? Math.max(2 * L, 7) : 9, maxN);
+    if (hi < 2 * L) continue;
+    const lo = Math.min(level === 3 ? 2 * L + 1 : 2 * L, hi);
     const ns = []; for (let n = lo; n <= hi; n++) ns.push(n);
     if (!ns.length) continue;
     const n = pick(ns);
@@ -157,7 +165,7 @@ function planeIcon(it, size = 56) {
 function solidObj(it, x, z) {
   const sh = buildShape(it.shape, { flip: it.shape === 'cone' && !!it.dir });
   setMono(sh, it.color);
-  const s = 0.62 * SIZES[it.size] * (it.shape === 'sphere' ? 0.9 : 1);
+  const s = SC * SIZES[it.size] * (it.shape === 'sphere' ? 0.9 : 1);
   const g = sh.group; g.scale.setScalar(s);
   let y = 0, ox = 0;
   if (it.shape === 'cylinder' && it.dir) { g.rotation.z = Math.PI / 2; y = 0.85 * s; ox = 0.9 * s; }
@@ -173,101 +181,104 @@ function clear3() { if (gl) { stage.clear(); stage.cornerSegs = []; } objs = [];
 
 function ov(el, pos, dy = 0, kind = 'pt') { el.style.position = 'absolute'; el.style.left = 0; el.style.top = 0; stage.overlay.appendChild(el); const o = { el, pos, dy, kind }; ovs.push(o); return o; }
 
-// 排版：立体多时分两排（手机也看得清）。返回每格的位置和相机适配
-function layoutPos(total, hasOpts) {
-  const perRow = total > 5 ? Math.ceil(total / 2) : total, rows = Math.ceil(total / perRow);
-  const R = rows + (hasOpts ? 1 : 0), dz = 3.8;
-  const zOf = (r) => (r - (R - 1) / 2) * dz;
-  const pos = [];
-  for (let i = 0; i < total; i++) { const r = Math.floor(i / perRow), c = i % perRow, inRow = r === rows - 1 ? total - r * perRow : perRow; pos.push({ x: (c - (inRow - 1) / 2) * PITCH, z: zOf(r), row: r }); }
-  return { pos, perRow, rows, R, optZ: zOf(R - 1), cols: Math.max(perRow, hasOpts ? 3 : 0) * (hasOpts ? 1 : 1) };
-}
-function fitCam(lay) {
-  const asp = stage.size.w / stage.size.h, th = Math.tan(rad(stage.camera.fov / 2));
-  const half = (Math.max(lay.perRow * PITCH, lay.cols > lay.perRow ? 3 * 2.4 : 0)) / 2 + 0.5;
-  const phi = lay.R > 1 ? 60 : 66;
-  const wReq = (half * (lay.R > 1 ? 1.2 : 1.1)) / (th * asp);
-  const hReq = (((lay.R - 1) * 3.8) * Math.cos(rad(phi)) + 1.3 * Math.sin(rad(phi)) + 3.4) / (2 * th * 0.92);
-  const r = Math.max(7.5, wReq, lay.R > 1 ? hReq : 0);
-  stage.controls.maxDistance = Math.max(14, r * 1.4);
-  const h = { target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(r, rad(phi), 0) };
-  stage.setHome(() => h); stage.fly = null; stage.controls.enabled = true; stage.place(h.target, h.sph);
-}
-
 function frame() {
   if (!objs.length && !ovs.length) return;
   const segs = [];
-  for (const o of objs) { o.shape.update(stage.camera); segs.push(...worldSegs(o.shape)); }
+  for (const o of objs) {
+    // 正交相机下的轮廓线：用「在这个立体正后方很远的相机」算，所以每个位置的同一种立体轮廓都一样
+    const fc = { position: new THREE.Vector3(o.x, 0, o.z).addScaledVector(VIEW, 300) };
+    o.shape.update(fc); segs.push(...worldSegs(o.shape));
+  }
   stage.cornerSegs = segs;
+  const W = (x, y, z) => stage.project(new THREE.Vector3(x, y, z));
   for (const o of ovs) {
-    if (o.kind === 'pt') { const p = stage.project(o.pos); const y = o.clampBottom ? Math.min(p.y + o.dy, stage.size.h - 34) : p.y + o.dy; o.el.style.transform = `translate(${p.x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%)`; }
-    else if (o.kind === 'unit') {
-      const pts = o.cells;
-      const a = pts.map((q) => stage.project(new THREE.Vector3(q.x - (PITCH / 2 - 0.08), 0.62, q.z))), b = pts.map((q) => stage.project(new THREE.Vector3(q.x + (PITCH / 2 - 0.08), 0.62, q.z)));
-      const l = Math.min(...a.map((p) => p.x)) - 4, r = Math.max(...b.map((p) => p.x)) + 4, c = a[0].y, hh = Math.abs(b[0].x - a[0].x) * 0.5;
-      Object.assign(o.el.style, { left: l + 'px', top: c - hh + 'px', width: r - l + 'px', height: hh * 2 + 'px' });
+    if (o.kind === 'pt') { const p = stage.project(o.pos); const y = o.clampBottom ? Math.min(p.y + o.dy, stage.size.h - 30) : p.y + o.dy; o.el.style.transform = `translate(${p.x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%)`; }
+    else if (o.kind === 'shelf') {
+      const a = W(...o.a), b = W(...o.b);
+      Object.assign(o.el.style, { left: a.x + 'px', top: a.y - 3 + 'px', width: b.x - a.x + 'px', height: '6px' });
+    } else if (o.kind === 'unit') {
+      const c = o.cells, h2 = PITCH / 2 - 0.05;
+      const xs = c.flatMap((q) => [W(q.x - RIGHT.x * h2, 0, q.z - RIGHT.z * h2).x, W(q.x + RIGHT.x * h2, 0, q.z + RIGHT.z * h2).x]);
+      const top = W(c[0].x, 1.7, c[0].z).y, bot = W(c[0].x + FWD.x * SH, 0, c[0].z + FWD.z * SH).y + 4;
+      Object.assign(o.el.style, { left: Math.min(...xs) + 'px', top: top + 'px', width: Math.max(...xs) - Math.min(...xs) + 'px', height: bot - top + 'px' });
     }
   }
 }
 
 // ———— 显示一道题（平面用 DOM，立体用 3D）————
-// v = { kind, shown[], answer, options[]|null, revealed, why, unit, qpos: 'end'|index }
+// 🔒 只排一行：从左到右读，「？」在最右边，每格下面有序号，所有图形站在同一条底线上、等大、等距。
+// v = { kind, shown[], answer, options[]|null, revealed, why, unit, noSlot }
 function showSeq(v) {
   const flatTab = v.kind === 'plane';
   host.classList.toggle('svg-on', flatTab); host.classList.toggle('keep3d', false);
+  host.classList.toggle('fixedview', !flatTab);
   stage.paused = flatTab || !gl;
   seqEl.style.display = flatTab ? '' : 'none';
   clear3();
   const total = v.shown.length + (v.noSlot ? 0 : 1);
   const L = v.unit ? v.unit.length : 0;
   if (flatTab) {
-    const w = seqEl.clientWidth - 30, is = Math.max(52, Math.min(104, Math.floor(w / total) - 10));
-    const cell = (it, cls = '', attr = '') => `<div class="it ${cls}" ${attr}>${planeIcon(it, is - 8)}</div>`;
-    const row = v.shown.map((it) => cell(it)).join('') + (v.noSlot ? '' : v.revealed ? cell(v.answer, 'pop') : `<div class="it qm">?</div>`);
-    let h = `<div class="row" id="r1" style="--is:${is}px">${row}</div>`;
+    const w = seqEl.clientWidth - 24, is = Math.max(40, Math.min(104, Math.floor(w / total)));
+    const cell = (it, cls, n) => `<div class="cw" style="width:${is}px"><div class="it ${cls}">${planeIcon(it, is - 10)}</div><div class="no">${n}</div></div>`;
+    const row = v.shown.map((it, i) => cell(it, '', i + 1)).join('') + (v.noSlot ? '' : v.revealed ? cell(v.answer, 'pop', total) : `<div class="cw" style="width:${is}px"><div class="it qm">?</div><div class="no">${total}</div></div>`);
+    let h = `<div class="row one" id="r1" style="--is:${is}px">${row}</div>`;
     if (v.options) {
-      h += `<div class="seq-label">「？」是哪一个？点一点</div><div class="row opt-row" style="--is:${Math.max(56, is)}px">${v.options.map((o, i) => `<button type="button" class="it" data-opt="${i}" aria-label="第${i + 1}个选项">${planeIcon(o, Math.max(56, is) - 16)}</button>`).join('')}</div>`;
+      const os = Math.max(56, Math.min(is, 96));
+      h += `<div class="seq-label">「？」是哪一个？点一点</div><div class="row opt-row" style="--is:${os}px">${v.options.map((o, i) => `<button type="button" class="it" data-opt="${i}" aria-label="第${i + 1}个选项">${planeIcon(o, os - 16)}</button>`).join('')}</div>`;
     }
     seqEl.innerHTML = h;
     if (v.why && L) {
       const r1 = seqEl.querySelector('#r1'), items = [...r1.children];
       for (let g = 0; g * L < items.length; g++) {
-        const grp = items.slice(g * L, g * L + L), x0 = grp[0].offsetLeft - 6, x1 = grp[grp.length - 1].offsetLeft + grp[grp.length - 1].offsetWidth + 6;
+        const grp = items.slice(g * L, g * L + L), x0 = grp[0].offsetLeft + 2, x1 = grp[grp.length - 1].offsetLeft + grp[grp.length - 1].offsetWidth - 2;
         const bx = document.createElement('div'); bx.className = 'unitbox'; bx.style.borderColor = g % 2 ? '#3E8EDE' : '#F2564B';
-        Object.assign(bx.style, { left: x0 + 'px', top: grp[0].offsetTop - 8 + 'px', width: x1 - x0 + 'px', height: grp[0].offsetHeight + 16 + 'px' });
+        Object.assign(bx.style, { left: x0 + 'px', top: grp[0].offsetTop - 6 + 'px', width: x1 - x0 + 'px', height: grp[0].offsetHeight + 12 + 'px' });
         r1.appendChild(bx);
       }
     }
     return;
   }
   if (!gl) { seqEl.style.display = ''; seqEl.innerHTML = '<div class="seq-label">3D 画面打不开，换一个浏览器试试。</div>'; return; }
-  const lay = layoutPos(total, !!v.options);
-  fitCam(lay);
-  v.shown.forEach((it, i) => { objs.push(solidObj(it, lay.pos[i].x, lay.pos[i].z)); });
-  const slot = lay.pos[v.shown.length];
-  if (v.noSlot) { /* 没有「？」 */ }
-  else if (v.revealed) objs.push(solidObj(v.answer, slot.x, slot.z));
-  else { const q = document.createElement('div'); q.className = 'it qm'; q.style.cssText = 'width:64px;height:64px;display:grid;place-items:center;border:4px dashed #3B2A1A;background:#fff;font-size:40px;font-weight:900'; q.textContent = '?'; ov(q, new THREE.Vector3(slot.x, 0.6, slot.z)); }
-  if (v.options) {
+  const hasOpt = !!v.options, optK = 7.4;
+  const asp = stage.size.w / stage.size.h;
+  const needW = Math.max(total, hasOpt ? 3 * 1.5 : 0) * PITCH + 0.6;
+  const H = Math.max(needW / asp, hasOpt ? 8.8 : 3.8);
+  stage.setOrtho(true, H);
+  const target = new THREE.Vector3(0, 0.15, 0).addScaledVector(FWD, hasOpt ? optK / 2 : 0);
+  const hv = { target, sph: new THREE.Spherical(40, PHI, AZ) };
+  stage.setHome(() => hv); stage.fly = null; stage.controls.enabled = false; stage.place(hv.target, hv.sph);
+  const at = (i, n, row) => { const t = (i - (n - 1) / 2) * (row ? PITCH * 1.5 : PITCH); const p = RIGHT.clone().multiplyScalar(t); if (row) p.addScaledVector(FWD, optK); return p; };
+  const pos = []; for (let i = 0; i < total; i++) pos.push(at(i, total, 0));
+  const unitPx = stage.size.h / H;
+  v.shown.forEach((it, i) => objs.push(solidObj(it, pos[i].x, pos[i].z)));
+  if (total === 0) return;
+  const slot = pos[v.shown.length];
+  if (!v.noSlot) {
+    if (v.revealed) objs.push(solidObj(v.answer, slot.x, slot.z));
+    else { const q = document.createElement('div'); q.className = 'it qm'; const sz = Math.round(Math.min(unitPx * 1.25, 120)); q.style.cssText = `width:${sz}px;height:${sz}px;display:grid;place-items:center;border:4px dashed #3B2A1A;background:#fff;font-size:${Math.round(sz * 0.55)}px;font-weight:900`; q.textContent = '?'; ov(q, new THREE.Vector3(slot.x, 0.55, slot.z)); }
+  }
+  const shelf = (a, b) => { const el = document.createElement('div'); el.className = 'shelf3'; stage.overlay.appendChild(el); ovs.push({ el, kind: 'shelf', a, b }); };
+  const e0 = pos[0].clone().addScaledVector(RIGHT, -PITCH / 2).addScaledVector(FWD, SH), e1 = pos[total - 1].clone().addScaledVector(RIGHT, PITCH / 2).addScaledVector(FWD, SH);
+  shelf([e0.x, 0, e0.z], [e1.x, 0, e1.z]);
+  pos.forEach((p, i) => { const n = document.createElement('div'); n.className = 'no3'; n.textContent = String(i + 1); ov(n, new THREE.Vector3(p.x + FWD.x * SH, 0, p.z + FWD.z * SH), 24); });
+  if (hasOpt) {
+    const n = v.options.length, op = v.options.map((_, i) => at(i, n, 1));
     v.options.forEach((o, i) => {
-      const x = (i - (v.options.length - 1) / 2) * 2.4;
-      objs.push(solidObj(o, x, lay.optZ));
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn yellow slot-btn'; b.dataset.opt = i; b.textContent = String(i + 1); b.style.pointerEvents = 'auto';
-      b.setAttribute('aria-label', `选第${i + 1}个`);
-      ov(b, new THREE.Vector3(x, 0, lay.optZ + 0.95), 28).clampBottom = true;
+      objs.push(solidObj(o, op[i].x, op[i].z));
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'btn yellow slot-btn'; b.dataset.opt = i; b.textContent = 'ABC'[i]; b.style.pointerEvents = 'auto';
+      b.setAttribute('aria-label', `选 ${'ABC'[i]}`);
+      ov(b, new THREE.Vector3(op[i].x + FWD.x * SH, 0, op[i].z + FWD.z * SH), 36).clampBottom = true;
     });
+    const f0 = op[0].clone().addScaledVector(RIGHT, -PITCH * 0.75).addScaledVector(FWD, SH), f1 = op[n - 1].clone().addScaledVector(RIGHT, PITCH * 0.75).addScaledVector(FWD, SH);
+    shelf([f0.x, 0, f0.z], [f1.x, 0, f1.z]);
     stage.overlay.onclick = (e) => { const b = e.target.closest('[data-opt]'); if (b) onOption(+b.dataset.opt); };
   }
   if (v.why && L) {
     for (let g = 0; g * L < total; g++) {
-      // 同一组跨两排时，每一排各画一个框
-      const byRow = {};
-      for (let i = g * L; i < Math.min(g * L + L, total); i++) (byRow[lay.pos[i].row] = byRow[lay.pos[i].row] || []).push(lay.pos[i]);
-      Object.values(byRow).forEach((cells) => {
-        const bx = document.createElement('div'); bx.className = 'unitbox'; bx.style.borderColor = g % 2 ? '#3E8EDE' : '#F2564B';
-        stage.overlay.appendChild(bx);
-        ovs.push({ el: bx, kind: 'unit', cells });
-      });
+      const cells = []; for (let i = g * L; i < Math.min(g * L + L, total); i++) cells.push(pos[i]);
+      const bx = document.createElement('div'); bx.className = 'unitbox'; bx.style.borderColor = g % 2 ? '#3E8EDE' : '#F2564B';
+      stage.overlay.appendChild(bx);
+      ovs.push({ el: bx, kind: 'unit', cells });
     }
   }
 }
@@ -292,7 +303,8 @@ function describeQ(q) {
   return `规律：${q.pat.replace(/(.)\1/g, '$1$1')}（变的是${TYPE_NAME[q.type]}）`;
 }
 function newQ() {
-  S.q = genQuestion(S.tab, S.level); S.revealed = false; S.why = false;
+  const wpx = S.tab === 'solid' ? stage.size.w : seqEl.clientWidth - 24;
+  S.q = genQuestion(S.tab, S.level, Math.max(5, Math.floor(wpx / MIN_CELL))); S.revealed = false; S.why = false;
 }
 
 function render() {
@@ -309,7 +321,7 @@ function render() {
         `<button type="button" class="btn s6 blue" data-a="why"${q.done ? '' : ' style="visibility:hidden"'}>${S.why ? '收起框框' : '为什么'}</button><button type="button" class="btn s6 green" data-a="next"${q.done ? '' : ' style="visibility:hidden"'}>下一题 ▶</button>`;
       const fb = panel.querySelector('#qfb');
       if (q.done) fb.innerHTML = q.ok ? '<span class="em">答对了！好棒！</span>规律是一组一组重复。' : `<span class="em">没关系，再看一看</span>正确答案已经放进「？」里了。按「为什么」看看规律。`;
-      else idleFeedback(fb, `点一点下面的图${q.kind === 'solid' ? '（点数字）' : ''}，选出「？」。`);
+      else idleFeedback(fb, `点一点下面的${q.kind === 'solid' ? '立体（点 A B C）' : '图'}，选出「？」。`);
       if (q.done && q.kind === 'plane') seqEl.querySelectorAll('[data-opt]').forEach((b) => { b.disabled = true; const o = q.options[+b.dataset.opt]; b.classList.toggle('right', itemKey(o) === itemKey(q.answer)); if (+b.dataset.opt === q.picked && !q.ok) b.classList.add('wrong'); });
     }
   } else if (S.tab === 'build') renderBuild(practice);
