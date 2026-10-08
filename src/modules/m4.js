@@ -1,7 +1,8 @@
 // M4 创意图案（7.2「创作图案」）与综合建模（7.1「综合制作新模型」）、小挑战（7.3）
 import { stage, THREE } from '../core/stage3d.js';
 import { FLAT, FLAT_IDS, flatSVG, flatIcon, PAL } from '../core/flat.js';
-import { renderQuiz, shuffle, pick } from '../core/quiz.js';
+import { renderQuiz, shuffle, pick, burst } from '../core/quiz.js';
+import { genCount, genSym, genCopy, matchParts, bboxUnits, KC, CW, CH, AX, countTitle, solidLabel } from './m4data.js';
 import { buildShape, setMono, worldSegs, SHAPE_IDS, NAMES } from './shapes.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 
@@ -200,10 +201,10 @@ function genModel() {
   }
   S.selO = null; relayout();
 }
+function load3HomeObj() { const asp = stage.size.w / stage.size.h; return { target: new THREE.Vector3(0, 0.7, 0.5), sph: new THREE.Spherical(asp < 1.25 ? 13.5 : 11.5, rad(58), rad(25)) }; }
 function load3Home() {
   stage.controls.maxDistance = 20;
-  const asp = stage.size.w / stage.size.h;
-  const h = { target: new THREE.Vector3(0, 0.7, 0.5), sph: new THREE.Spherical(asp < 1.25 ? 13.5 : 11.5, rad(58), rad(25)) };
+  const h = load3HomeObj();
   stage.setHome(() => h); stage.fly = null; stage.controls.enabled = true; stage.place(h.target, h.sph);
 }
 function frame() {
@@ -218,7 +219,7 @@ const _ray = new THREE.Raycaster(), _pl = new THREE.Plane(new THREE.Vector3(0, 1
 function ptr(e) { const r = stage.renderer.domElement.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); }
 function groundHit(e) { _ray.setFromCamera(ptr(e), stage.camera); const v = new THREE.Vector3(); return _ray.ray.intersectPlane(_pl, v) ? v : null; }
 function onDown3(e) {
-  if (S.tab === 'plane' || S.quiz || !gl) return;
+  if (S.tab === 'plane' || S.tab === 'chal' || S.quiz || !gl) return;
   _ray.setFromCamera(ptr(e), stage.camera);
   const meshes = objs.flatMap((o) => o.shape.faces.map((f) => f.mesh));
   const hit = _ray.intersectObjects(meshes, false)[0];
@@ -295,40 +296,241 @@ function panelSolid(practice) {
     `<div class="mini-note">范例（一键载入）</div><div class="tool-grid">${Object.entries(EXAMPLES).map(([k, e]) => `<button class="btn small yellow" data-a="ex-${k}">${e.name}</button>`).join('')}</div>` +
     `<div class="grp6"><button class="btn s6 blue" data-a="sshow">${S.shown ? '收起' : '用了哪些立体？'}</button></div><div class="readout"><div class="line">${summary}</div></div>` + (practice ? '' : KEYS());
 }
-function panelChal(practice) {
-  if (!S.ch) newChal();
-  const c = S.ch;
-  if (!practice) {
-    panel.innerHTML = tabsHTML() + `<div class="readout"><div class="q">小挑战：用了几个${NAMES[c.type]}？</div><div class="line">${c.shown ? `<b>答案：${c.answer} 个</b>` : '数一数，再按「揭晓」。'}</div></div><div class="grp6"><button class="btn s6 red" data-a="chreveal">${c.shown ? '再藏起来' : '揭晓'}</button><button class="btn s6 green" data-a="chnext">换一题 ▶</button></div>` + KEYS();
-  } else {
-    panel.innerHTML = tabsHTML() + '<div id="qbox" class="qbox"></div>';
-    renderQuiz(panel.querySelector('#qbox'), c.q, { next: () => { S.ch = null; panelChalRebuild(); }, burstHost: host });
-  }
+// ═══════════ 小挑战（SPEC §8-5）：数图形／补对称／照样拼／数立体 ═══════════
+const CSUBS = [['count', '数图形'], ['sym', '补对称'], ['copy', '照样拼'], ['solid', '数立体']];
+const subsHTML = () => `<div class="row2">${CSUBS.map(([k, t]) => `<button class="btn small${S.cs === k ? ' on' : ''}" data-a="cs-${k}">${t}</button>`).join('')}</div>`;
+const ASK_COL = ['#F2564B', '#3E8EDE'];
+let chSvg = null, chDrag = null;
+
+// 题目与状态
+function newChalQ() {
+  S.cq = null; S.shownAns = false; S.mine = []; S.csel = null; S.hintIds = []; S.checked = null; S.cdone = false; S.qz = null; S.hid = false;
+  if (S.cs === 'count') {
+    const q = genCount(); S.cq = q;
+    S.qz = { title: countTitle(q), labels: q.optionLabels, correct: q.correct, cols: q.asks.length === 1 ? 3 : 1, goodMsg: `数一数，真的是 ${q.labelOf(q.answer)}。`, badMsg: `正确答案是 ${q.labelOf(q.answer)}。看，一个一个数。`, onDone: () => { S.shownAns = true; paintCh(); } };
+  } else if (S.cs === 'sym') S.cq = genSym();
+  else if (S.cs === 'copy') S.cq = genCopy();
+  else if (S.cs === 'solid') newSolidChal();
 }
-function panelChalRebuild() { renderPanel(); }
-function newChal() {
-  genModel();
-  const types = modelTypes(), type = pick(types), answer = countOfType(type);
-  // 答案要和 3D 场景里真正的物件数一致，不一致就重来
-  let guard = 0; let t = type, a = answer;
-  while (sceneCount(t) !== a && guard++ < 5) { genModel(); t = pick(modelTypes()); a = countOfType(t); }
-  const nums = new Set([a]); const cand = shuffle([...Array(8).keys()].filter((x) => x !== a && Math.abs(x - a) <= 3 && x > 0));
-  while (nums.size < 3) nums.add(cand.pop());
-  const arr = shuffle([...nums]);
-  S.ch = { type: t, answer: a, shown: false, verified: sceneCount(t) === a, q: { title: `用了几个${NAMES[t]}？`, labels: arr.map(String), correct: arr.indexOf(a), cols: 3, goodMsg: `数一数，是 ${a} 个。`, badMsg: `正确答案是 ${a} 个。` } };
+
+// ——— 平面三种：画面 ———
+function chalInner() {
+  const q = S.cq; let g = '';
+  const ink = (p, extra = '', color = p.color, sw = 6) => flatSVG(p.t, { cx: p.x, cy: p.y, k: KC, rot: p.r, color, sw, extra });
+  if (S.cs === 'count') {
+    const bb = bboxUnits(q.pic.parts), s = Math.min(380 / (bb.w * KC), 340 / (bb.h * KC), 1.25), k = KC * s;
+    const cnt = q.asks.map(() => 0);
+    q.pic.parts.forEach((p) => {
+      const cx = 240 + p.x * s * KC, cy = 210 + p.y * s * KC;
+      g += flatSVG(p.t, { cx, cy, k, rot: p.r, color: p.color, sw: 6, extra: `data-shape="${p.t}"` });
+    });
+    q.pic.parts.forEach((p) => {
+      const cx = 240 + p.x * s * KC, cy = 210 + p.y * s * KC;
+      const ai = q.asks.indexOf(p.t);
+      if (S.shownAns && ai >= 0) { cnt[ai]++; g += `<circle cx="${cx}" cy="${cy}" r="${k * 1.5}" fill="none" stroke="${ASK_COL[ai]}" stroke-width="6" stroke-dasharray="10 8"/><circle cx="${cx + k * 1.1}" cy="${cy - k * 1.1}" r="17" fill="#3B2A1A"/><text x="${cx + k * 1.1}" y="${cy - k * 1.1 + 8}" font-size="23" font-weight="900" fill="#fff" text-anchor="middle">${cnt[ai]}</text>`; }
+    });
+    return g;
+  }
+  const sym = S.cs === 'sym';
+  g += `<line x1="${AX}" y1="0" x2="${AX}" y2="${CH}" stroke="${sym ? '#8E6BD8' : '#3B2A1A'}" stroke-width="${sym ? 5 : 3}" stroke-dasharray="${sym ? '14 10' : '4 10'}" opacity="${sym ? 0.85 : 0.4}"/>`;
+  q.left.forEach((p) => (g += ink(p, 'data-lock="1"')));
+  const showT = S.shownAns ? q.target : S.hintIds.map((i) => q.target[i]);
+  showT.forEach((p) => (g += flatSVG(p.t, { cx: p.x, cy: p.y, k: KC, rot: p.r, color: 'rgba(62,142,222,.16)', sw: 4, extra: 'data-ghost="1"' })));
+  const res = S.checked, wrongSet = new Set(res ? res.extra : []);
+  S.mine.forEach((m, j) => {
+    g += ink(m, `data-id="${m.id}"`);
+    if (wrongSet.has(j)) g += `<circle cx="${m.x}" cy="${m.y}" r="${KC * 1.4}" fill="none" stroke="#F2564B" stroke-width="6" pointer-events="none"/>`;
+    if (m.id === S.csel) g += `<circle cx="${m.x}" cy="${m.y}" r="${KC * 1.85}" fill="none" stroke="#3E8EDE" stroke-width="4" stroke-dasharray="10 8" pointer-events="none"/>`;
+  });
+  if (res) res.missing.forEach((i) => { const p = q.target[i]; g += `<circle cx="${p.x}" cy="${p.y}" r="${KC * 1.4}" fill="none" stroke="#F2564B" stroke-width="5" stroke-dasharray="9 7" pointer-events="none"/>`; });
+  S.mine.forEach((m) => (g += `<circle cx="${m.x}" cy="${m.y}" r="${KC * 1.3}" fill="transparent" data-id="${m.id}" style="cursor:grab"/>`));
+  return g;
+}
+function paintCh() {
+  if (!flatEl || S.tab !== 'chal' || S.cs === 'solid') return;
+  if (!chSvg || !chSvg.isConnected) {
+    flatEl.innerHTML = `<svg id="m4svg" viewBox="0 0 ${CW} ${CH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="小挑战" style="touch-action:none"></svg>`;
+    chSvg = flatEl.querySelector('svg'); svgEl = chSvg;
+    chSvg.addEventListener('pointerdown', chDown); chSvg.addEventListener('pointermove', chMove);
+    chSvg.addEventListener('pointerup', chUp); chSvg.addEventListener('pointercancel', chUp);
+  }
+  chSvg.innerHTML = chalInner();
+  S.cq && (S.cq.verified = S.cs === 'count' ? chSvg.querySelectorAll('[data-shape]').length === S.cq.pic.parts.length : true);
+}
+function chPoint(e) { const pt = chSvg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const p = pt.matrixTransform(chSvg.getScreenCTM().inverse()); return [p.x, p.y]; }
+function chDown(e) {
+  if (S.cs !== 'sym' && S.cs !== 'copy') return;
+  const t = e.target.closest('[data-id]');
+  if (!t) { S.csel = null; paintCh(); renderPanel(); return; }
+  const id = +t.dataset.id, m = S.mine.find((i) => i.id === id); if (!m) return;
+  S.csel = id; S.checked = null; const [px, py] = chPoint(e); chDrag = { id, dx: m.x - px, dy: m.y - py };
+  try { chSvg.setPointerCapture(e.pointerId); } catch (er) {}
+  paintCh(); renderPanel(); e.preventDefault();
+}
+function chMove(e) {
+  if (!chDrag) return;
+  const m = S.mine.find((i) => i.id === chDrag.id); if (!m) return;
+  const [px, py] = chPoint(e), sn = (v) => Math.round(v / 10) * 10;
+  m.x = Math.min(CW - 12, Math.max(12, sn(px + chDrag.dx))); m.y = Math.min(CH - 12, Math.max(12, sn(py + chDrag.dy)));
+  paintCh();
+}
+function chUp() { if (chDrag) { chDrag = null; renderPanel(); } }
+let midSeq = 1;
+// 放一个新图形：颜色取「还没用过颜色的同形状目标」的颜色，放在右半边空位
+function chAdd(t) {
+  const q = S.cq, used = new Set(S.mine.map((m) => m.ci).filter((x) => x != null));
+  const ci = q.target.findIndex((p, i) => p.t === t && !used.has(i));
+  const color = ci >= 0 ? q.target[ci].color : PAL[0];
+  let pos = null;
+  for (const y of [70, 160, 250, 340]) for (const x of [300, 420]) if (!pos && !S.mine.some((m) => Math.hypot(m.x - x, m.y - y) < 60)) pos = [x, y];
+  if (!pos) pos = [270 + Math.floor(Math.random() * 180), 60 + Math.floor(Math.random() * 300)];
+  const m = { id: midSeq++, t, x: pos[0], y: pos[1], r: 0, color, ci: ci >= 0 ? ci : null };
+  S.mine.push(m); S.csel = m.id; S.checked = null;
+}
+function chCheck() {
+  const res = matchParts(S.cq.target, S.mine);
+  S.checked = res; S.cdone = res.ok; S.shownAns = S.shownAns;
+  if (res.ok) burst(host);
+  paintCh(); renderPanel();
+}
+function chHint() {
+  const res = matchParts(S.cq.target, S.mine), have = new Set(S.hintIds);
+  const next = res.missing.find((i) => !have.has(i));
+  if (next != null) S.hintIds.push(next);
+  paintCh(); renderPanel();
+}
+const chMsg = () => {
+  const r = S.checked; if (!r) return '';
+  if (r.ok) return S.cs === 'sym' ? '完成了！左右刚好对称。' : '完成了！和目标一模一样。';
+  const parts = [];
+  if (r.extra.length) parts.push(`红色圈住的 ${r.extra.length} 块放错了（位置、形状或方向不对）`);
+  if (r.missing.length) parts.push(`虚线圈 ${r.missing.length} 处还缺图形`);
+  return parts.join('；') + '。';
+};
+
+// ——— 数立体：3D，要转着看 ———
+// 被挡住的程度：用每个立体的外接盒（缩小一点，偏保守）当挡板，数「看得到的取样点」占几成
+const _vray = new THREE.Ray(), _hit = new THREE.Vector3();
+function worldBox(o) { const b = boundsOf(o); return new THREE.Box3(new THREE.Vector3(o.x + b.mn.x, o.y + b.mn.y, o.z + b.mn.z), new THREE.Vector3(o.x + b.mx.x, o.y + b.mx.y, o.z + b.mx.z)); }
+function samplePts(box) {
+  const c = box.getCenter(new THREE.Vector3()), h = box.getSize(new THREE.Vector3()).multiplyScalar(0.5), out = [c.clone()];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) out.push(new THREE.Vector3(c.x + sx * h.x * 0.5, c.y + sy * h.y * 0.5, c.z + sz * h.z * 0.5));
+  [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].forEach(([x, y, z]) => out.push(new THREE.Vector3(c.x + x * h.x * 0.7, c.y + y * h.y * 0.7, c.z + z * h.z * 0.7)));
+  return out;
+}
+export function visRatio(o, camPos) {
+  const others = objs.filter((q) => q !== o).map((q) => { const b = worldBox(q); const sh = b.getSize(new THREE.Vector3()).multiplyScalar(0.1); b.min.add(sh); b.max.sub(sh); return b; });
+  const pts = samplePts(worldBox(o)); let n = 0;
+  for (const p of pts) {
+    const d = p.distanceTo(camPos); _vray.set(camPos, p.clone().sub(camPos).normalize());
+    let blocked = false;
+    for (const b of others) { const h = _vray.intersectBox(b, _hit); if (h && _hit.distanceTo(camPos) < d - 0.05) { blocked = true; break; } }
+    if (!blocked) n++;
+  }
+  return n / pts.length;
+}
+const camAt = (az) => new THREE.Vector3(0, 0.7, 0.5).add(new THREE.Vector3().setFromSpherical(new THREE.Spherical(12, rad(58), rad(az))));
+const SUP = ['cube', 'cuboid', 'sphere', 'cylinder'];
+export function genHiddenModel() {
+  for (let a = 0; a < 400; a++) {
+    clearObjs();
+    const types = shuffle(SHAPE_IDS).slice(0, 2 + Math.floor(Math.random() * 2));
+    const sup = types.filter((t) => SUP.includes(t)); if (!sup.length) continue;
+    const xs = shuffle([-2.4, 0, 2.4]).slice(0, 2 + Math.floor(Math.random() * 2));
+    xs.forEach((x) => {
+      makeObj({ type: pick(sup), x, z: 0.4, color: pick(COLORS7), size: 1 });
+      if (Math.random() < 0.65) makeObj({ type: pick(types), x, z: 0.4, color: pick(COLORS7), size: 1 });
+    });
+    const nb = 1 + Math.floor(Math.random() * 2);
+    shuffle(xs).slice(0, nb).forEach((x) => makeObj({ type: pick(types), x: x + (Math.random() < 0.5 ? 0 : 0.5), z: -1.9, color: pick(COLORS7), size: 0 }));
+    if (objs.length < 4 || objs.length > 8) continue;
+    S.selO = null; relayout();
+    const home = camAt(25);
+    const rs = objs.map((o) => visRatio(o, home));
+    if (!rs.some((r) => r < 0.2)) continue;
+    let ok = true;
+    for (const o of objs) { let best = 0; for (let az = 0; az < 360; az += 90) best = Math.max(best, visRatio(o, camAt(az))); if (best < 0.7) { ok = false; break; } }
+    if (!ok) continue;
+    return { ratios: rs, hidden: objs.filter((_, i) => rs[i] < 0.2).map((o) => o.id) };
+  }
+  return null;
+}
+function newSolidChal() {
+  if (!gl) return;
+  stage.clear(); objs = []; stage.cornerSegs = []; load3Home();
+  let info = genHiddenModel(), guard = 0;
+  while (!info && guard++ < 5) info = genHiddenModel();
+  const counts = {}; objs.forEach((o) => (counts[o.type] = (counts[o.type] || 0) + 1));
+  const visCounts = {}; objs.forEach((o, i) => { if (!info.hidden.includes(o.id)) visCounts[o.type] = (visCounts[o.type] || 0) + 1; });
+  const lab = (c) => solidLabel(c, NAMES), ans = lab(counts);
+  const opts = [ans, lab(visCounts)];
+  for (let t = 0; t < 100 && opts.length < 3; t++) {
+    const c = { ...counts }, ks = Object.keys(c);
+    if (Math.random() < 0.5) { const k = pick(ks); c[k] += pick([1, 1, -1]); if (c[k] <= 0) delete c[k]; } else { const k = pick(ks), nt = pick(SHAPE_IDS.filter((x) => !c[x])); if (nt) { c[nt] = c[k]; delete c[k]; } }
+    const l = lab(c); if (l && !opts.includes(l)) opts.push(l);
+  }
+  const labels = shuffle(opts);
+  S.cq = { kind: 'solid', counts, visCounts, hidden: info.hidden, answer: ans, labels, ok: labels.indexOf(ans) };
+  S.qz = { title: '用了哪几种立体？各几个？', labels, correct: S.cq.ok, cols: 1, hint: '有的立体被挡住了。拖一拖，转到后面看看。', goodMsg: `一共 ${objs.length} 个：${ans}。`, badMsg: `正确答案：${ans}。`, onDone: () => { chSolidReveal(true); } };
+}
+function chSolidReveal(on) {
+  if (!gl || S.cs !== 'solid') return;
+  S.shownAns = on;
+  objs.forEach((o) => {
+    const hid = S.cq.hidden.includes(o.id);
+    o.shape.faces.forEach((f) => f.mesh.material.emissive.set(on && hid ? '#FFC93C' : '#000000').multiplyScalar(on && hid ? 0.3 : 0));
+  });
+  const h = load3HomeObj();
+  if (on) { const s = new THREE.Spherical(h.sph.radius, h.sph.phi, h.sph.theta + Math.PI); stage.flyTo({ target: h.target, sph: s }, 1100); } else stage.flyTo(h, 800);
+}
+
+// ——— 面板 ———
+function chalReadout() {
+  const q = S.cq;
+  if (S.cs === 'count') return `<div class="readout"><div class="q">小挑战：${countTitle(q)}</div><div class="line">${S.shownAns ? `<b>答案：${q.labelOf(q.answer)}</b>` : '数一数，再按「揭晓」。'}</div></div>`;
+  if (S.cs === 'solid') return `<div class="readout"><div class="q">小挑战：用了哪几种立体？各几个？</div><div class="line">${S.shownAns ? `<b>${q.answer}</b>` : '有的立体被挡住了。拖一拖，转到后面看看，再按「揭晓」。'}</div></div>`;
+  const sym = S.cs === 'sym', placed = S.mine.length, need = q.target.length;
+  const msg = S.checked ? chMsg() : sym ? '左边拼好了，在右边拼出镜像（对称）。' : '照左边的图，在右边拼一个一样的。';
+  return `<div class="readout" style="min-height:0"><div class="q" style="font-size:22px">${msg}</div><div class="line" style="font-size:20px">已放 ${placed} 块${S.checked ? '' : `，要放 ${need} 块`}</div></div>`;
+}
+function panelChal(practice) {
+  if (!S.cq) newChalQ();
+  const q = S.cq, sub = subsHTML();
+  if (S.cs === 'count' || S.cs === 'solid') {
+    if (!practice) {
+      panel.innerHTML = tabsHTML() + sub + chalReadout() + `<div class="grp6"><button class="btn s6 red" data-a="chreveal">${S.shownAns ? '再藏起来' : '揭晓'}</button><button class="btn s6 green" data-a="chnext">换一题 ▶</button></div>` + KEYS();
+    } else {
+      panel.innerHTML = tabsHTML() + sub + '<div id="qbox" class="qbox"></div>';
+      renderQuiz(panel.querySelector('#qbox'), S.qz, { next: () => { newChalQ(); paintCh(); renderPanel(); }, burstHost: host });
+    }
+    return;
+  }
+  const sel = S.mine.find((m) => m.id === S.csel);
+  const palette = `<div class="pickshape">${FLAT_IDS.map((id) => `<button class="btn small" data-a="chadd-${id}" aria-label="加${FLAT[id].name}">${flatIcon(id, '#FFC93C', 40)}</button>`).join('')}</div>`;
+  panel.innerHTML = tabsHTML() + sub + chalReadout() + palette +
+    `<div class="tool-grid"><button class="btn" data-a="chrot45"${sel ? '' : ' disabled'}>↻ 转45°</button><button class="btn" data-a="chrot90"${sel ? '' : ' disabled'}>↻ 转90°</button><button class="btn red" data-a="chdel"${sel ? '' : ' disabled'}>删除</button></div>` +
+    `<div class="grp6"><button class="btn s3 blue" data-a="chhint">提示</button><button class="btn s3 green" data-a="chcheck"${S.mine.length ? '' : ' disabled'}>检查</button>` +
+    `${practice ? '' : `<button class="btn s3 yellow" data-a="chreveal">${S.shownAns ? '藏起答案' : '显示答案'}</button>`}<button class="btn ${practice ? 's6' : 's3'}" data-a="chnext">换一题 ▶</button></div>`;
+}
+function applyView() {
+  const flat = S.tab === 'plane' || (S.tab === 'chal' && S.cs !== 'solid');
+  host.classList.toggle('svg-on', flat); stage.paused = flat || !gl;
+  flatEl.style.display = flat ? '' : 'none';
 }
 
 function setTab(t) {
-  S.tab = t; S.q = null; S.note = ''; S.ch = null; S.shown = false;
-  host.classList.toggle('svg-on', t === 'plane'); stage.paused = t === 'plane' || !gl;
-  flatEl.style.display = t === 'plane' ? '' : 'none';
-  if (gl) {
-    if (t === 'plane') { stage.clear(); objs = []; stage.cornerSegs = []; }
-    else { stage.clear(); objs = []; stage.cornerSegs = []; load3Home(); S.selO = null; if (t === 'chal') { newChal(); } }
-  }
+  S.tab = t; S.q = null; S.note = ''; S.shown = false;
+  if (gl) { stage.clear(); objs = []; stage.cornerSegs = []; if (t !== 'plane') { load3Home(); S.selO = null; } }
+  if (t === 'chal') { S.cq = null; if (!S.cs) S.cs = 'count'; }
+  applyView();
   if (t === 'plane') { if (S.quiz) { items = []; } paintPlane(); }
+  else if (t === 'chal') { if (S.cs !== 'solid') { newChalQ(); paintCh(); } else newChalQ(); }
   renderPanel();
-  if (t === 'chal' && gl) {} 
+}
+function switchSub(k) {
+  S.cs = k; S.cq = null;
+  if (gl) { stage.clear(); objs = []; stage.cornerSegs = []; if (k === 'solid') load3Home(); }
+  applyView(); newChalQ(); paintCh(); renderPanel();
 }
 function enterQuizOrFree(quiz) {
   S.free = !quiz; S.q = null; S.note = '';
@@ -363,8 +565,14 @@ function onPanel(e) {
   else if (a === 'sclear') { clearObjs(); renderPanel(); }
   else if (a.startsWith('ex-')) { loadExample(a.slice(3)); renderPanel(); }
   else if (a === 'sshow') { S.shown = !S.shown; renderPanel(); }
-  else if (a === 'chreveal') { S.ch.shown = !S.ch.shown; renderPanel(); }
-  else if (a === 'chnext') { S.ch = null; renderPanel(); }
+  else if (a.startsWith('cs-')) switchSub(a.slice(3));
+  else if (a === 'chreveal') { if (S.cs === 'solid') chSolidReveal(!S.shownAns); else { S.shownAns = !S.shownAns; paintCh(); } renderPanel(); }
+  else if (a === 'chnext') { newChalQ(); paintCh(); renderPanel(); }
+  else if (a.startsWith('chadd-')) { chAdd(a.slice(6)); paintCh(); renderPanel(); }
+  else if (a === 'chrot45' || a === 'chrot90') { const m = S.mine.find((i) => i.id === S.csel); if (m) { m.r = (m.r + (a === 'chrot45' ? 45 : 90)) % 360; S.checked = null; paintCh(); renderPanel(); } }
+  else if (a === 'chdel') { S.mine = S.mine.filter((i) => i.id !== S.csel); S.csel = null; S.checked = null; paintCh(); renderPanel(); }
+  else if (a === 'chhint') chHint();
+  else if (a === 'chcheck') chCheck();
 }
 function onKey(e) {
   if (e.type !== 'keydown') { if (e.code === 'Space') e.preventDefault(); return; }
@@ -372,14 +580,14 @@ function onKey(e) {
   else if (e.key === 'Delete' || e.key === 'Backspace') {
     if (S.tab === 'plane' && S.sel) { items = items.filter((i) => i.id !== S.sel); S.sel = null; paintPlane(); renderPanel(); }
     else if (S.tab === 'solid' && S.selO) { const o = objs.find((q) => q.id === S.selO); if (o) { removeObj(o); S.selO = null; relayout(); renderPanel(); } }
-  } else if (e.code === 'Space' && S.tab === 'chal' && ctxRef.getMode() === 'teach') { S.ch.shown = !S.ch.shown; renderPanel(); }
+  } else if (e.code === 'Space' && S.tab === 'chal' && ctxRef.getMode() === 'teach' && (S.cs === 'count' || S.cs === 'solid')) { if (S.cs === 'solid') chSolidReveal(!S.shownAns); else { S.shownAns = !S.shownAns; paintCh(); } renderPanel(); }
 }
 
 export default {
   title: '创意图案',
   mount(body, ctx) {
     ctxRef = ctx; items = []; objs = []; drag = null; down = null;
-    S = { tab: 'plane', color: PAL[0], color3: '#FFC93C', sel: null, selO: null, mirror: false, snap: true, q: null, note: '', free: undefined, quiz: false, shown: false, ch: null };
+    S = { cs: 'count', tab: 'plane', color: PAL[0], color3: '#FFC93C', sel: null, selO: null, mirror: false, snap: true, q: null, note: '', free: undefined, quiz: false, shown: false, ch: null };
     body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div></div><div class="panel" id="panel"></div>';
     host = body.querySelector('#host'); panel = body.querySelector('#panel');
     gl = stage.mount(host, { home: () => ({ target: new THREE.Vector3(0, 0.9, 0), sph: new THREE.Spherical(10, rad(60), rad(25)) }), onFrame: frame }).ok;
@@ -389,16 +597,16 @@ export default {
     host.classList.add('svg-on'); stage.paused = true;
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { S.q = null; S.free = undefined; S.ch = null; S.shown = false; if (S.tab === 'plane') { items = []; S.sel = null; paintPlane(); } else if (gl) { clearObjs(); } renderPanel(); });
+    offMode = ctx.onMode(() => { S.q = null; S.free = undefined; S.cq = null; S.shown = false; if (S.tab === 'chal') { if (gl) { stage.clear(); objs = []; stage.cornerSegs = []; if (S.cs === 'solid') load3Home(); } newChalQ(); paintCh(); } else if (S.tab === 'plane') { items = []; S.sel = null; paintPlane(); } else if (gl) { clearObjs(); } renderPanel(); });
     // 练习模式预设为出题
     S.free = undefined;
     paintPlane(); renderPanel();
-    window.__m4 = { S: () => S, items: () => items, objs: () => objs, exportPNG, planeExportSVG, boundsOf, setTab, EXAMPLES, loadExample, modelTypes, countOfType, sceneCount, addSolid, relayout, genModel, newChal, planeSVG };
+    window.__m4 = { S: () => S, items: () => items, objs: () => objs, exportPNG, planeExportSVG, boundsOf, setTab, EXAMPLES, loadExample, modelTypes, countOfType, sceneCount, addSolid, relayout, genModel, newChalQ, planeSVG, matchParts, genCount, genSym, genCopy, genHiddenModel, visRatio, chalInner, switchSub, paintCh, chAdd, chCheck, scene: () => stage.content };
   },
   unmount() {
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);
     window.removeEventListener('pointermove', onMove3); window.removeEventListener('pointerup', onUp3);
-    offMode?.(); objs = []; items = []; drag = null;
+    offMode?.(); objs = []; items = []; drag = null; chSvg = null; chDrag = null;
     stage.unmount(); delete window.__m4;
   },
 };

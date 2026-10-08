@@ -338,3 +338,4 @@ button{font:inherit;color:inherit;cursor:pointer}
 .no3{position:absolute;left:0;top:0;margin:0;pointer-events:none;color:var(--ink);background:#fff;border:3px solid var(--ink);border-radius:15px;height:30px;padding:3px 0 0}
 .shelf3{position:absolute;background:var(--ink);pointer-events:none}
 .stage.fixedview .stage-bar{display:none!important}
+@media (max-width:520px){.quiz-q{font-size:26px}}
