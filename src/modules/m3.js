@@ -7,17 +7,25 @@ import { keysHTML, toggleKeys } from '../core/keys.js';
 
 const rad = THREE.MathUtils.degToRad;
 const PATTERNS = { ABAB: 'AB', AAB: 'AAB', ABB: 'ABB', ABC: 'ABC', AABB: 'AABB' };
+// 第三轮（SPEC §8-4）：规律只由「形状不同」构成。同一题所有图形颜色、大小、方向都一样，颜色每题随机换。
+const FIXED_SIZE = 2, FIXED_DIR = 0;
+const PLANE_SHAPES = ['square', 'rect', 'tri', 'circle'], SOLID_SHAPES = ['cube', 'cuboid', 'pyramid', 'cone', 'cylinder', 'sphere'];
+// 形状相似的一组：放在同一题里更难
+const SIMILAR = { plane: [['square', 'rect']], solid: [['cube', 'cuboid'], ['cone', 'pyramid']] };
 const SIZES = [0.62, 0.8, 1];
-const PLANE_SHAPES = ['square', 'circle', 'tri'], SOLID_SHAPES = ['cube', 'sphere', 'cone', 'cylinder'];
-const SNAME = { square: '正方形', circle: '圆形', tri: '三角形', rect: '长方形', cube: '正方体', sphere: '球体', cone: '圆锥体', cylinder: '圆柱体' };
+const PITCH = 1.9; // 立体排列的间距
+const SNAME = { square: '正方形', circle: '圆形', tri: '三角形', rect: '长方形', cube: '正方体', cuboid: '长方体', pyramid: '正方棱锥体', sphere: '球体', cone: '圆锥体', cylinder: '圆柱体' };
 const CNAME = { '#F2564B': '红色', '#FFC93C': '黄色', '#3E8EDE': '蓝色', '#46B97A': '绿色', '#FF8A3D': '橙色', '#8E6BD8': '紫色' };
-const TYPE_NAME = { shape: '形状', color: '颜色', size: '大小', dir: '方向', 'shape+color': '形状和颜色', 'size+color': '大小和颜色' };
+const TYPE_NAME = { shape: '形状' };
 const K = [['<kbd>空白键</kbd>', '揭晓／下一题'], ['<kbd>R</kbd>', '复位视角']];
 
 let S, host, panel, seqEl, gl, ctxRef, offMode, objs = [], ovs = [], ro;
 
 // ———— 题目生成与唯一性 ————
 export const itemKey = (it) => `${it.shape}|${it.color}|${it.size}|${it.dir}`;
+const pool = (kind) => (kind === 'plane' ? PLANE_SHAPES : SOLID_SHAPES);
+const simPair = (kind, a, b) => SIMILAR[kind].some((g) => g.includes(a) && g.includes(b));
+const hasSimilar = (kind, list) => list.some((a, i) => list.some((b, j) => j > i && simPair(kind, a, b)));
 
 // 唯一性：把已显示的数列当作「周期性重复」来检查。凡是「至少完整出现两次」的周期 p，
 // 它们对下一个的预测必须完全一致，且至少要有一个这样的周期；否则这题有歧义，不能出。
@@ -33,99 +41,123 @@ export function nextPredictions(keys) {
 export function isUnique(keys) { const r = nextPredictions(keys); return r.fits.length > 0 && r.preds.length === 1; }
 export const minPeriod = (keys) => nextPredictions(keys).fits[0] || 0;
 
-function makeSymbols(kind, type, nsym) {
-  const shapes = kind === 'plane' ? PLANE_SHAPES : SOLID_SHAPES;
-  const base = { shape: pick(shapes), color: pick(PAL), size: 1, dir: 0 };
-  const distinct = (arr) => shuffle(arr).slice(0, nsym);
-  const out = [];
-  if (type === 'shape') { const sh = distinct(shapes); if (sh.length < nsym) return null; for (let i = 0; i < nsym; i++) out.push({ ...base, shape: sh[i] }); }
-  else if (type === 'color') { const c = distinct(PAL); for (let i = 0; i < nsym; i++) out.push({ ...base, color: c[i] }); }
-  else if (type === 'size') { const z = distinct([0, 1, 2]); if (z.length < nsym) return null; for (let i = 0; i < nsym; i++) out.push({ ...base, size: z[i] }); }
-  else if (type === 'dir') {
-    if (nsym > 2) return null;
-    const sh = kind === 'plane' ? pick(['tri', 'rect']) : pick(['cone', 'cylinder']);
-    for (let i = 0; i < nsym; i++) out.push({ ...base, shape: sh, dir: i });
-  } else if (type === 'shape+color') {
-    const sh = distinct(shapes), c = distinct(PAL); if (sh.length < nsym) return null;
-    for (let i = 0; i < nsym; i++) out.push({ ...base, shape: sh[i], color: c[i] });
-  } else if (type === 'size+color') {
-    const z = distinct([0, 1, 2]), c = distinct(PAL); if (z.length < nsym) return null;
-    for (let i = 0; i < nsym; i++) out.push({ ...base, size: z[i], color: c[i] });
+// 选 nsym 个不同的形状。level 1：不放相似形状；level 3：一定放一对相似形状；level 2：随便。
+function pickShapes(kind, nsym, level) {
+  const all = pool(kind);
+  for (let t = 0; t < 60; t++) {
+    let ch;
+    if (level === 3 && nsym >= 2) {
+      const g = shuffle(pick(SIMILAR[kind])).slice(0, 2);
+      ch = [...g, ...shuffle(all.filter((x) => !g.includes(x))).slice(0, nsym - 2)];
+    } else ch = shuffle(all).slice(0, nsym);
+    const sim = hasSimilar(kind, ch);
+    if (level === 1 && sim) continue;
+    if (level === 3 && !sim) continue;
+    return shuffle(ch);
   }
-  return out;
+  return null;
+}
+const mkItem = (shape, color) => ({ shape, color, size: FIXED_SIZE, dir: FIXED_DIR });
+
+function makeOptions(kind, level, answer, syms, color) {
+  // 选项：答案＋另一个符号＋一个别的形状（level 3 优先放相似的）
+  const opts = [answer, ...syms.filter((it) => it.shape !== answer.shape)];
+  const pl = pool(kind);
+  const sims = pl.filter((x) => x !== answer.shape && simPair(kind, x, answer.shape));
+  for (let t = 0; t < 80 && opts.length < 3; t++) {
+    const sh = level === 3 && sims.length && Math.random() < 0.7 ? pick(sims) : pick(pl);
+    if (!opts.some((o) => o.shape === sh)) opts.push(mkItem(sh, color));
+  }
+  return opts.slice(0, 3);
 }
 
 export function genQuestion(kind, level) {
-  const types = level === 1 ? ['shape', 'color'] : level === 2 ? ['shape', 'color', 'size', 'dir'] : ['shape', 'color', 'size', 'dir', 'shape+color', 'size+color'];
   const pats = level === 1 ? ['ABAB', 'AAB', 'ABB'] : ['ABAB', 'AAB', 'ABB', 'ABC', 'AABB'];
   for (let tries = 0; tries < 400; tries++) {
-    const type = pick(types);
-    const pat = pick(pats.filter((p) => (type === 'dir' ? !p.includes('C') : true)));
-    const unit = PATTERNS[pat], L = unit.length, letters = [...new Set(unit)].sort();
-    const syms = makeSymbols(kind, type, letters.length); if (!syms) continue;
+    const pat = pick(pats), unit = PATTERNS[pat], L = unit.length, letters = [...new Set(unit)].sort();
+    const shapes = pickShapes(kind, letters.length, level); if (!shapes) continue;
+    const color = pick(PAL);
+    const syms = shapes.map((sh) => mkItem(sh, color));
     const sym = (ch) => syms[letters.indexOf(ch)];
-    const ns = []; for (let n = 2 * L; n <= 8; n++) ns.push(n);
-    const n = level === 1 ? ns[0] + (Math.random() < 0.5 ? 0 : Math.min(1, ns.length - 1)) : pick(ns);
+    // 长度：level 1 最短；level 2 中等；level 3 更长
+    const maxN = kind === 'plane' ? 9 : 7; // 立体一排放不下太多，最多显示 7 个
+    const lo = level === 1 ? 2 * L : level === 2 ? 2 * L : 2 * L + 1, hi = Math.min(level === 1 ? 2 * L + 1 : level === 2 ? Math.max(2 * L, 7) : 9, maxN);
+    const ns = []; for (let n = lo; n <= hi; n++) ns.push(n);
+    if (!ns.length) continue;
+    const n = pick(ns);
     const full = []; for (let i = 0; i <= n; i++) full.push({ ...sym(unit[i % L]) });
     const shown = full.slice(0, n), answer = full[n];
     const keys = shown.map(itemKey);
     if (!isUnique(keys)) continue;
     if (nextPredictions(keys).preds[0] !== itemKey(answer)) continue;
-    // 选项：答案＋另一个符号＋一个只变一个属性的假答案
-    const opts = [answer, ...letters.map(sym).filter((it) => itemKey(it) !== itemKey(answer))];
-    const wrongOne = { ...answer };
-    const shapes = kind === 'plane' ? PLANE_SHAPES : SOLID_SHAPES;
-    for (let t = 0; t < 80 && opts.length < 3; t++) {
-      const w = { ...answer };
-      if (type === 'dir') { w.shape = pick(shapes); if (Math.random() < 0.5) w.dir = 1 - w.dir; }
-      else if (type.includes('shape')) w.shape = pick(shapes);
-      if (type.includes('color')) w.color = pick(PAL);
-      if (type.includes('size')) w.size = pick([0, 1, 2]);
-      if (!opts.some((o) => itemKey(o) === itemKey(w))) opts.push(w);
-    }
-    while (opts.length > 3) opts.pop();
-    return { kind, type, pat, unit, n, shown, answer, options: shuffle(opts), uniqueOK: true, keys };
+    const opts = makeOptions(kind, level, answer, syms, color);
+    if (opts.length < 3) continue;
+    return { kind, level, type: 'shape', pat, unit, n, shown, answer, options: shuffle(opts), uniqueOK: true, keys };
   }
   return null;
+}
+
+// 自动核对一道题：图形只差在形状；答案唯一且在选项里；选项互不相同；难度条件成立。返回错误列表（空＝通过）
+export function checkQuestion(q) {
+  const err = [], all = [...q.shown, q.answer, ...q.options];
+  if (new Set(all.map((x) => x.color)).size !== 1) err.push('颜色不一致');
+  if (new Set(all.map((x) => x.size)).size !== 1) err.push('大小不一致');
+  if (new Set(all.map((x) => x.dir)).size !== 1) err.push('方向不一致');
+  const keys = q.shown.map(itemKey), pr = nextPredictions(keys);
+  if (!(pr.fits.length > 0 && pr.preds.length === 1)) err.push('答案不唯一');
+  if (pr.preds[0] !== itemKey(q.answer)) err.push('预测与答案不同');
+  if (new Set(q.options.map(itemKey)).size !== q.options.length) err.push('选项重复');
+  if (q.options.filter((o) => itemKey(o) === itemKey(q.answer)).length !== 1) err.push('选项里答案不是恰好一个');
+  if (q.options.filter((o) => itemKey(o) === pr.preds[0]).length !== 1) err.push('预测答案不在选项里');
+  // 规律本身：按 unit 重建，形状必须一致
+  const letters = [...new Set(q.unit)].sort(), map = {};
+  q.shown.forEach((it, i) => { const c = q.unit[i % q.unit.length]; if (map[c] && map[c] !== it.shape) err.push('规律不符'); map[c] = it.shape; });
+  if (new Set(letters.map((c) => map[c])).size !== letters.length) err.push('不同符号用了同一形状');
+  const shapesUsed = [...new Set(q.shown.map((x) => x.shape))];
+  if (q.level === 1 && hasSimilar(q.kind, shapesUsed)) err.push('level1 出现相似形状');
+  if (q.level === 3 && !hasSimilar(q.kind, shapesUsed)) err.push('level3 没有相似形状');
+  if (q.shown.length < 2 * q.unit.length) err.push('规律没出现两遍');
+  return err;
 }
 
 // ———— 小挑战：第 8 个是什么 ————
 export function genChallenge() {
   for (let t = 0; t < 400; t++) {
-    const pat = pick(['ABAB', 'AAB', 'ABB', 'ABC']), type = pick(['shape', 'color', 'size']);
+    const pat = pick(['ABAB', 'AAB', 'ABB', 'ABC']);
     const unit = PATTERNS[pat], L = unit.length, letters = [...new Set(unit)].sort();
-    const syms = makeSymbols('plane', type, letters.length); if (!syms) continue;
+    const shapes = pickShapes('plane', letters.length, 2); if (!shapes) continue;
+    const color = pick(PAL), syms = shapes.map((sh) => mkItem(sh, color));
     const sym = (ch) => syms[letters.indexOf(ch)];
     const all = []; for (let i = 0; i < 8; i++) all.push({ ...sym(unit[i % L]) });
     const shown = all.slice(0, 6), answer = all[7];
     if (!isUnique(shown.map(itemKey))) continue;
-    const opts = [answer, ...letters.map(sym).filter((it) => itemKey(it) !== itemKey(answer))];
-    for (let k = 0; k < 20 && opts.length < 3; k++) { const w = { ...answer, color: pick(PAL), shape: type === 'shape' ? pick(PLANE_SHAPES) : answer.shape, size: type === 'size' ? pick([0, 1, 2]) : answer.size }; if (!opts.some((o) => itemKey(o) === itemKey(w))) opts.push(w); }
-    while (opts.length > 3) opts.pop();
-    return { pat, unit, type, shown, answer, options: shuffle(opts) };
+    const opts = makeOptions('plane', 2, answer, syms, color);
+    if (opts.length < 3) continue;
+    return { pat, unit, type: 'shape', shown, answer, options: shuffle(opts), all };
   }
 }
-// 自动检查：只看画面上显示的 6 个，自己找出周期，推出第 8 个，必须与出题时的答案一致
+// 自动检查：只看画面上显示的 6 个，自己找出周期，推出第 8 个，必须与出题时的答案一致；并检查只差形状、选项合理
 export function checkChallenge(ch) {
   const keys = ch.shown.map(itemKey), p = minPeriod(keys);
   if (!p) return false;
   const eighth = keys[7 % p];
-  return eighth === itemKey(ch.answer);
+  const all = [...ch.shown, ch.answer, ...ch.options];
+  const same = new Set(all.map((x) => x.color)).size === 1 && new Set(all.map((x) => x.size)).size === 1 && new Set(all.map((x) => x.dir)).size === 1;
+  return same && eighth === itemKey(ch.answer) && new Set(ch.options.map(itemKey)).size === ch.options.length && ch.options.some((o) => itemKey(o) === itemKey(ch.answer));
 }
 
 // ———— 平面图形的画法 ————
 const fid = (s) => (s === 'triangle' ? 'tri' : s);
 function planeIcon(it, size = 56) {
-  const id = fid(it.shape);
-  const rot = id === 'tri' ? (it.dir ? 180 : 0) : id === 'rect' ? (it.dir ? 90 : 0) : 0;
-  return `<svg viewBox="-60 -60 120 120" width="${size}" height="${size}" aria-hidden="true">${flatSVG(id, { k: 42 * SIZES[it.size], color: it.color, rot, sw: 5 })}</svg>`;
+  const id = fid(it.shape), rot = 0;
+  return `<svg viewBox="-60 -60 120 120" width="${size}" height="${size}" aria-hidden="true">${flatSVG(id, { k: 40 * SIZES[it.size], color: it.color, rot, sw: 5 })}</svg>`;
 }
 
 // ———— 立体（3D）————
 function solidObj(it, x, z) {
   const sh = buildShape(it.shape, { flip: it.shape === 'cone' && !!it.dir });
   setMono(sh, it.color);
-  const s = 0.64 * SIZES[it.size] * (it.shape === 'sphere' ? 0.9 : 1);
+  const s = 0.62 * SIZES[it.size] * (it.shape === 'sphere' ? 0.9 : 1);
   const g = sh.group; g.scale.setScalar(s);
   let y = 0, ox = 0;
   if (it.shape === 'cylinder' && it.dir) { g.rotation.z = Math.PI / 2; y = 0.85 * s; ox = 0.9 * s; }
@@ -141,13 +173,24 @@ function clear3() { if (gl) { stage.clear(); stage.cornerSegs = []; } objs = [];
 
 function ov(el, pos, dy = 0, kind = 'pt') { el.style.position = 'absolute'; el.style.left = 0; el.style.top = 0; stage.overlay.appendChild(el); const o = { el, pos, dy, kind }; ovs.push(o); return o; }
 
-function fitCam(N, rows) {
+// 排版：立体多时分两排（手机也看得清）。返回每格的位置和相机适配
+function layoutPos(total, hasOpts) {
+  const perRow = total > 5 ? Math.ceil(total / 2) : total, rows = Math.ceil(total / perRow);
+  const R = rows + (hasOpts ? 1 : 0), dz = 3.8;
+  const zOf = (r) => (r - (R - 1) / 2) * dz;
+  const pos = [];
+  for (let i = 0; i < total; i++) { const r = Math.floor(i / perRow), c = i % perRow, inRow = r === rows - 1 ? total - r * perRow : perRow; pos.push({ x: (c - (inRow - 1) / 2) * PITCH, z: zOf(r), row: r }); }
+  return { pos, perRow, rows, R, optZ: zOf(R - 1), cols: Math.max(perRow, hasOpts ? 3 : 0) * (hasOpts ? 1 : 1) };
+}
+function fitCam(lay) {
   const asp = stage.size.w / stage.size.h, th = Math.tan(rad(stage.camera.fov / 2));
-  const half = (N * 1.5) / 2 + 0.4;
-  const r = Math.max(7.5, (half * 1.12) / (th * asp));
-  const tz = rows > 1 ? 1.3 : 0;
+  const half = (Math.max(lay.perRow * PITCH, lay.cols > lay.perRow ? 3 * 2.4 : 0)) / 2 + 0.5;
+  const phi = lay.R > 1 ? 60 : 66;
+  const wReq = (half * (lay.R > 1 ? 1.2 : 1.1)) / (th * asp);
+  const hReq = (((lay.R - 1) * 3.8) * Math.cos(rad(phi)) + 1.3 * Math.sin(rad(phi)) + 3.4) / (2 * th * 0.92);
+  const r = Math.max(7.5, wReq, lay.R > 1 ? hReq : 0);
   stage.controls.maxDistance = Math.max(14, r * 1.4);
-  const h = { target: new THREE.Vector3(0, 0.5, tz), sph: new THREE.Spherical(r, rad(rows > 1 ? 56 : 66), 0) };
+  const h = { target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(r, rad(phi), 0) };
   stage.setHome(() => h); stage.fly = null; stage.controls.enabled = true; stage.place(h.target, h.sph);
 }
 
@@ -157,11 +200,11 @@ function frame() {
   for (const o of objs) { o.shape.update(stage.camera); segs.push(...worldSegs(o.shape)); }
   stage.cornerSegs = segs;
   for (const o of ovs) {
-    if (o.kind === 'pt') { const p = stage.project(o.pos); o.el.style.transform = `translate(${p.x.toFixed(1)}px,${(p.y + o.dy).toFixed(1)}px) translate(-50%,-50%)`; }
+    if (o.kind === 'pt') { const p = stage.project(o.pos); const y = o.clampBottom ? Math.min(p.y + o.dy, stage.size.h - 34) : p.y + o.dy; o.el.style.transform = `translate(${p.x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-50%)`; }
     else if (o.kind === 'unit') {
-      const pts = o.idx.map((i) => objs[i] ? { x: objs[i].x, z: objs[i].z } : { x: o.slot.x, z: o.slot.z });
-      const a = pts.map((q) => stage.project(new THREE.Vector3(q.x - 0.78, 0.55, q.z))), b = pts.map((q) => stage.project(new THREE.Vector3(q.x + 0.78, 0.55, q.z)));
-      const l = Math.min(...a.map((p) => p.x)) - 4, r = Math.max(...b.map((p) => p.x)) + 4, c = a[0].y, hh = Math.abs(b[0].x - a[0].x) * 0.62;
+      const pts = o.cells;
+      const a = pts.map((q) => stage.project(new THREE.Vector3(q.x - (PITCH / 2 - 0.08), 0.62, q.z))), b = pts.map((q) => stage.project(new THREE.Vector3(q.x + (PITCH / 2 - 0.08), 0.62, q.z)));
+      const l = Math.min(...a.map((p) => p.x)) - 4, r = Math.max(...b.map((p) => p.x)) + 4, c = a[0].y, hh = Math.abs(b[0].x - a[0].x) * 0.5;
       Object.assign(o.el.style, { left: l + 'px', top: c - hh + 'px', width: r - l + 'px', height: hh * 2 + 'px' });
     }
   }
@@ -198,29 +241,33 @@ function showSeq(v) {
     return;
   }
   if (!gl) { seqEl.style.display = ''; seqEl.innerHTML = '<div class="seq-label">3D 画面打不开，换一个浏览器试试。</div>'; return; }
-  const rows = v.options ? 2 : 1, N = Math.max(total, v.options ? 3 : 0);
-  fitCam(N, rows);
-  v.shown.forEach((it, i) => { objs.push(solidObj(it, (i - (total - 1) / 2) * 1.5, v.options ? -1.3 : 0)); });
-  const slotX = (v.shown.length - (total - 1) / 2) * 1.5, slotZ = v.options ? -1.3 : 0;
+  const lay = layoutPos(total, !!v.options);
+  fitCam(lay);
+  v.shown.forEach((it, i) => { objs.push(solidObj(it, lay.pos[i].x, lay.pos[i].z)); });
+  const slot = lay.pos[v.shown.length];
   if (v.noSlot) { /* 没有「？」 */ }
-  else if (v.revealed) objs.push(solidObj(v.answer, slotX, slotZ));
-  else { const q = document.createElement('div'); q.className = 'it qm'; q.style.cssText = 'width:64px;height:64px;display:grid;place-items:center;border:4px dashed #3B2A1A;background:#fff;font-size:40px;font-weight:900'; q.textContent = '?'; ov(q, new THREE.Vector3(slotX, 0.6, slotZ)); }
+  else if (v.revealed) objs.push(solidObj(v.answer, slot.x, slot.z));
+  else { const q = document.createElement('div'); q.className = 'it qm'; q.style.cssText = 'width:64px;height:64px;display:grid;place-items:center;border:4px dashed #3B2A1A;background:#fff;font-size:40px;font-weight:900'; q.textContent = '?'; ov(q, new THREE.Vector3(slot.x, 0.6, slot.z)); }
   if (v.options) {
     v.options.forEach((o, i) => {
       const x = (i - (v.options.length - 1) / 2) * 2.4;
-      objs.push(solidObj(o, x, 1.6));
+      objs.push(solidObj(o, x, lay.optZ));
       const b = document.createElement('button'); b.type = 'button'; b.className = 'btn yellow slot-btn'; b.dataset.opt = i; b.textContent = String(i + 1); b.style.pointerEvents = 'auto';
       b.setAttribute('aria-label', `选第${i + 1}个`);
-      ov(b, new THREE.Vector3(x, 0, 1.6 + 0.95), 28);
+      ov(b, new THREE.Vector3(x, 0, lay.optZ + 0.95), 28).clampBottom = true;
     });
     stage.overlay.onclick = (e) => { const b = e.target.closest('[data-opt]'); if (b) onOption(+b.dataset.opt); };
   }
   if (v.why && L) {
     for (let g = 0; g * L < total; g++) {
-      const idx = []; for (let i = g * L; i < Math.min(g * L + L, total); i++) idx.push(i);
-      const bx = document.createElement('div'); bx.className = 'unitbox'; bx.style.borderColor = g % 2 ? '#3E8EDE' : '#F2564B';
-      stage.overlay.appendChild(bx);
-      const o = { el: bx, kind: 'unit', idx: idx.map((i) => (i < objs.length && i < v.shown.length + (v.revealed ? 1 : 0) ? i : -1)).map((i) => i), slot: { x: slotX, z: slotZ } }; ovs.push(o);
+      // 同一组跨两排时，每一排各画一个框
+      const byRow = {};
+      for (let i = g * L; i < Math.min(g * L + L, total); i++) (byRow[lay.pos[i].row] = byRow[lay.pos[i].row] || []).push(lay.pos[i]);
+      Object.values(byRow).forEach((cells) => {
+        const bx = document.createElement('div'); bx.className = 'unitbox'; bx.style.borderColor = g % 2 ? '#3E8EDE' : '#F2564B';
+        stage.overlay.appendChild(bx);
+        ovs.push({ el: bx, kind: 'unit', cells });
+      });
     }
   }
 }
@@ -270,11 +317,11 @@ function render() {
 }
 
 // ———— 老师出题：自己拼 ————
-function buildItem() { const b = S.build; return { shape: b.shape, color: b.color, size: b.size, dir: b.dir }; }
+function buildItem() { const b = S.build; return { shape: b.shape, color: b.color, size: FIXED_SIZE, dir: FIXED_DIR }; }
 function renderBuild() {
   const b = S.build, items = b.items, hide = b.hideLast && items.length > 1;
   const shown = hide ? items.slice(0, -1) : items, answer = hide ? items[items.length - 1] : null;
-  const shapes = b.kind === 'plane' ? [...PLANE_SHAPES, 'rect'] : SOLID_SHAPES;
+  const shapes = b.kind === 'plane' ? PLANE_SHAPES : SOLID_SHAPES;
   if (!shapes.includes(b.shape)) b.shape = shapes[0];
   const keys = shown.map(itemKey);
   let unit = 0, note = '';
@@ -283,15 +330,12 @@ function renderBuild() {
     unit = pr.fits[0] || 0;
     note = pr.fits.length && pr.preds.length === 1 ? (pr.preds[0] === itemKey(answer) ? '规律清楚，答案是唯一的。' : '注意：照规律，「？」应该是另一个图形。') : '规律还不够明显：再多排几个，学生才不会有别的答案。';
   }
-  showSeq({ noSlot: !hide, kind: b.kind, shown, answer: answer || { shape: shapes[0], color: PAL[0], size: 1, dir: 0 }, options: null, revealed: hide && S.revealed, why: S.why && !!unit && hide, unit: unit ? { length: unit } : null });
+  showSeq({ noSlot: !hide, kind: b.kind, shown, answer: answer || { shape: shapes[0], color: b.color, size: FIXED_SIZE, dir: FIXED_DIR }, options: null, revealed: hide && S.revealed, why: S.why && !!unit && hide, unit: unit ? { length: unit } : null });
   if (!hide && shown.length === 0) { /* 空 */ }
   const chipShape = (s) => (b.kind === 'plane' ? `<button class="btn small${b.shape === s ? ' on' : ''}" data-a="bshape-${s}" aria-label="${SNAME[s]}" style="padding:4px;min-width:56px">${planeIcon({ shape: s, color: b.color, size: 2, dir: 0 }, 40)}</button>` : `<button class="btn small${b.shape === s ? ' on' : ''}" data-a="bshape-${s}">${SNAME[s]}</button>`);
-  const dirOK = (b.kind === 'plane' ? ['tri', 'rect'] : ['cone', 'cylinder']).includes(b.shape);
-  S.hint = '';
+    S.hint = '';
   panel.innerHTML = tabsHTML() + `<div class="row2"><button class="btn small${b.kind === 'plane' ? ' on' : ''}" data-a="bkind-plane">平面</button><button class="btn small${b.kind === 'solid' ? ' on' : ''}" data-a="bkind-solid">立体</button></div>` +
-    `<div class="mini-note">形状</div><div class="chiprow">${shapes.map(chipShape).join('')}</div>` +
-    `<div class="mini-note">颜色</div><div class="chiprow">${PAL.map((c) => `<button class="btn sw${b.color === c ? ' on' : ''}" data-a="bcolor-${c.slice(1)}" aria-label="${CNAME[c]}" style="background:${c}"></button>`).join('')}</div>` +
-    `<div class="mini-note">大小　　<span style="opacity:.8">方向${dirOK ? '' : '（这个形状没有方向）'}</span></div><div class="chiprow">${[0, 1, 2].map((z) => `<button class="btn small${b.size === z ? ' on' : ''}" data-a="bsize-${z}">${['小', '中', '大'][z]}</button>`).join('')}${[0, 1].map((d) => `<button class="btn small${b.dir === d ? ' on' : ''}" data-a="bdir-${d}"${dirOK ? '' : ' disabled'}>${b.kind === 'plane' ? (b.shape === 'rect' ? ['横', '竖'][d] : ['朝上', '朝下'][d]) : (b.shape === 'cylinder' ? ['站', '躺'][d] : ['尖朝上', '尖朝下'][d])}</button>`).join('')}</div>` +
+    `<div class="mini-note">形状（只比形状，其他都一样）</div><div class="chiprow">${shapes.map(chipShape).join('')}</div>` +
     `<div class="grp6"><button class="btn s6 green" data-a="badd"${items.length >= 9 ? ' disabled' : ''}>加入这一格（现有 ${items.length} 格）</button><button class="btn s3" data-a="bundo"${items.length ? '' : ' disabled'}>撤销</button><button class="btn s3" data-a="bclear"${items.length ? '' : ' disabled'}>清空</button>` +
     `<button class="btn s6 ${b.hideLast ? 'on' : 'yellow'}" data-a="bhide"${items.length > 1 ? '' : ' disabled'}>${b.hideLast ? '最后一格已设为「？」' : '最后一格设为「？」'}</button>` +
     `<button class="btn s3 red" data-a="breveal"${hide ? '' : ' disabled'}>${S.revealed ? '藏起来' : '揭晓'}</button><button class="btn s3 blue" data-a="bwhy"${hide && unit ? '' : ' disabled'}>为什么</button></div><div class="mini-note">${note}</div>`;
@@ -336,14 +380,11 @@ function onPanel(e) {
   else if (a === 'reveal') { S.revealed = !S.revealed; if (!S.revealed) S.why = false; render(); }
   else if (a === 'why') { S.why = !S.why; render(); }
   else if (a === 'next') { newQ(); render(); }
-  else if (a.startsWith('bkind-')) { bd.kind = a.slice(6); bd.items = []; bd.hideLast = false; S.revealed = false; S.why = false; render(); }
+  else if (a.startsWith('bkind-')) { bd.kind = a.slice(6); bd.items = []; bd.color = pick(PAL); bd.hideLast = false; S.revealed = false; S.why = false; render(); }
   else if (a.startsWith('bshape-')) { bd.shape = a.slice(7); render(); }
-  else if (a.startsWith('bcolor-')) { bd.color = '#' + a.slice(7); render(); }
-  else if (a.startsWith('bsize-')) { bd.size = +a.slice(6); render(); }
-  else if (a.startsWith('bdir-')) { bd.dir = +a.slice(5); render(); }
   else if (a === 'badd') { bd.items.push(buildItem()); S.revealed = false; S.why = false; render(); }
   else if (a === 'bundo') { bd.items.pop(); if (bd.items.length < 2) bd.hideLast = false; S.revealed = false; render(); }
-  else if (a === 'bclear') { bd.items = []; bd.hideLast = false; S.revealed = false; S.why = false; render(); }
+  else if (a === 'bclear') { bd.items = []; bd.color = pick(PAL); bd.hideLast = false; S.revealed = false; S.why = false; render(); }
   else if (a === 'bhide') { bd.hideLast = !bd.hideLast; S.revealed = false; S.why = false; render(); }
   else if (a === 'breveal') { S.revealed = !S.revealed; if (!S.revealed) S.why = false; render(); }
   else if (a === 'bwhy') { S.why = !S.why; render(); }
@@ -370,7 +411,7 @@ export default {
   title: '模式排列',
   mount(body, ctx) {
     ctxRef = ctx;
-    S = { tab: 'plane', level: 1, q: null, revealed: false, why: false, ch: null, build: { kind: 'plane', items: [], hideLast: false, shape: 'square', color: PAL[0], size: 1, dir: 0 } };
+    S = { tab: 'plane', level: 1, q: null, revealed: false, why: false, ch: null, build: { kind: 'plane', items: [], hideLast: false, shape: 'square', color: pick(PAL) } };
     body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div></div><div class="panel" id="panel"></div>';
     host = body.querySelector('#host'); panel = body.querySelector('#panel');
     gl = stage.mount(host, { home: () => ({ target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(9, rad(66), 0) }), onFrame: frame }).ok;
@@ -382,7 +423,7 @@ export default {
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
     offMode = ctx.onMode(() => { S.q = null; S.revealed = false; S.why = false; S.ch = null; render(); });
     render();
-    window.__m3 = { S: () => S, genQuestion, genChallenge, checkChallenge, isUnique, nextPredictions, itemKey, setTab };
+    window.__m3 = { S: () => S, genQuestion, genChallenge, checkChallenge, checkQuestion, isUnique, nextPredictions, itemKey, setTab };
   },
   unmount() {
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);
