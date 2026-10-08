@@ -6,6 +6,8 @@ import { mountOptions, idleFeedback, burst, shuffle, pick, renderQuiz } from '..
 import { COLOR_NAMES } from '../core/flat.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 import { NETS, key, analyze, pickRoot, buildPools, landscape, normalize } from './netlogic.js';
+import { enumerateNets, makePoly, cubeClassOf } from './netgeo.js';
+import { buildPolyNet, buildCylinderNet, buildConeNet, netBounds, CONE, CYL } from './netbuild.js';
 
 const HALF = Math.PI / 2, DUR = 750, STEP = 230;
 const OFF = { N: [0, -0.5], S: [0, 0.5], W: [-0.5, 0], E: [0.5, 0] };
@@ -15,7 +17,7 @@ const RED = '#F2564B';
 const loop = [-0.5, 0, -0.5, 0.5, 0, -0.5, 0.5, 0, 0.5, -0.5, 0, 0.5, -0.5, 0, -0.5];
 const CORN = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
 
-let S, host, panel, offMode, ctxRef, gl, pools, net, picker;
+let S, host, panel, offMode, ctxRef, gl, pools, net, picker, solidBar, G = null, netSets = null;
 
 // ———— 3D 展开图 ————
 function disposeNet() { stage.clear(); net = null; }
@@ -61,7 +63,7 @@ function build(cells, { colors = COLORS, flat = false, name = '' } = {}) {
 
 const closedView = () => ({ target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(6.6, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(35)) });
 const openView = () => ({ target: net.center.clone(), sph: new THREE.Spherical(5.4 + 0.95 * Math.max(net.R, net.C), THREE.MathUtils.degToRad(14), 0) });
-const viewNow = () => (net && net.open ? openView() : closedView());
+const viewNow = () => (S.solid !== 'cube' ? gView(G && G.to < 0.5) : net && net.open ? openView() : closedView());
 
 function setOpen(o, { fly = true } = {}) {
   net.open = o;
@@ -73,6 +75,7 @@ function setOpen(o, { fly = true } = {}) {
 const animTime = () => dur(DUR) + dur(STEP) * net.maxD + 120;
 
 function frame(now) {
+  if (S.solid !== 'cube') return gframe(now);
   if (!net) return;
   for (const h of net.hinges) {
     const t = Math.min(Math.max((now - h.t0 - h.delay) / dur(DUR), 0), 1);
@@ -248,6 +251,7 @@ const KEYS_E = () => keysHTML([['<kbd>空白键</kbd>', '展开／合起'], ['<k
 const KEYS_G = () => keysHTML([['<kbd>空白键</kbd>', '折折看／下一题'], ['<kbd>R</kbd>', '复位视角']]);
 
 function render() {
+  if (S.solid !== 'cube') return renderGeneric();
   if (!gl) { panel.innerHTML = tabs() + '<div class="readout"><div class="line">3D 画面打不开，这个模块需要 3D。</div></div>'; return; }
   const practice = ctxRef.getMode() === 'practice';
   if (S.tab === 'explore') {
@@ -281,9 +285,122 @@ function render() {
   } else idleFeedback(fb, '看一看这个图，选一个答案。');
 }
 
+
+// ═══════════ 其他 4 种立体：长方体、正方棱锥体、圆柱体、圆锥体 ═══════════
+const SOLIDS = [['cube', '正方体'], ['cuboid', '长方体'], ['pyramid', '正方棱锥体'], ['cylinder', '圆柱体'], ['cone', '圆锥体']];
+const SNAME5 = Object.fromEntries(SOLIDS);
+function buildSolidBar() {
+  solidBar.innerHTML = SOLIDS.map(([id, t]) => `<button type="button" class="btn small" data-solid="${id}">${t}</button>`).join('');
+  solidBar.onclick = (e) => { const b = e.target.closest('[data-solid]'); if (b) selectSolid(b.dataset.solid); };
+  syncSolidBar();
+}
+const syncSolidBar = () => solidBar?.querySelectorAll('[data-solid]').forEach((b) => b.classList.toggle('on', b.dataset.solid === S.solid));
+
+// 展开图列表：长方体＝每一类（共 11 类）各取一种；正方棱锥体＝全部 8 种
+function getNetSets() {
+  if (netSets) return netSets;
+  const cube = makePoly('cube'), out = {};
+  const area = (n) => { const b = netBounds(n.net.faces.map((f) => f.poly)); return b.w * b.h; };
+  {
+    const e = enumerateNets('cuboid'), byClass = new Map();
+    e.nets.forEach((n) => { const c = cubeClassOf(cube, n.trees[0]); (byClass.get(c) || byClass.set(c, []).get(c)).push(n); });
+    const picks = [...byClass.values()].map((list) => list.sort((a, b) => area(a) - area(b))[0]);
+    out.cuboid = { P: e.P, stats: e.stats, classes: byClass.size, list: picks.sort((a, b) => area(a) - area(b)) };
+  }
+  {
+    const e = enumerateNets('pyramid');
+    const deg = (n) => n.net.faces.filter((f) => f.parent === 0).length;
+    out.pyramid = { P: e.P, stats: e.stats, classes: e.nets.length, list: e.nets.sort((a, b) => deg(b) - deg(a) || a.key.localeCompare(b.key)) };
+  }
+  netSets = out; return out;
+}
+function solidCenterOf(P, net) { const pts = P.verts.map((v) => net.T(v)); const b = new THREE.Box3().setFromPoints(pts); return b.getCenter(new THREE.Vector3()); }
+function makeObj(solid, vi) {
+  if (solid === 'cylinder') return buildCylinderNet();
+  if (solid === 'cone') return buildConeNet();
+  const set = getNetSets()[solid], item = set.list[vi % set.list.length];
+  item.net.solidCenter = solidCenterOf(set.P, item.net);
+  const cols = solid === 'pyramid' ? [COLORS[5], COLORS[0], COLORS[1], COLORS[2], COLORS[3]] : COLORS;
+  return buildPolyNet(item.net, cols);
+}
+const variants = (solid) => (solid === 'cuboid' || solid === 'pyramid' ? getNetSets()[solid].list.length : 1);
+function gView(open) {
+  const b = G.obj.bounds;
+  if (open) return { target: new THREE.Vector3(b.cu, 0, b.cv), sph: new THREE.Spherical(5.2 + 1.0 * Math.max(b.w, b.h * 0.9), THREE.MathUtils.degToRad(14), 0) };
+  const c = G.obj.solidCenter;
+  return { target: c.clone(), sph: new THREE.Spherical(6.4 + (G.obj.kind === 'cone' || G.obj.kind === 'cyl' ? 0.4 : 0), THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(35)) };
+}
+function selectSolid(id, vi = 0, { openFirst = true } = {}) {
+  clearTimeout(S.t); clearCallout?.();
+  S.solid = id; S.vi = vi; S.gq = null; syncSolidBar();
+  if (id === 'cube') { net = null; G = null; S.tab = S.tab || 'explore'; if (gl) { stage.clear(); stage.cornerSegs = []; stage.setHome(viewNow); showNet(S.i, false); } render(); return; }
+  if (!gl) { render(); return; }
+  stage.clear(); stage.cornerSegs = []; net = null; stage.fly = null; stage.controls.enabled = true;
+  const obj = makeObj(id, vi); stage.content.add(obj.group);
+  G = { obj, p: 1, from: 1, to: 1, t0: 0, ms: 1000 };
+  obj.setP(1);
+  stage.setHome(viewNow);
+  const v = gView(false); stage.place(v.target, v.sph);
+  render();
+  if (openFirst) S.t = setTimeout(() => { if (G && G.obj === obj) { gOpen(); render(); } }, 250);
+}
+const gMs = () => (G.obj.kind === 'poly' ? 1100 + 330 * 3 : 2400);
+function gSetP(p) { G.p = p; G.from = G.to = p; G.obj.setP(p); }
+function gOpen() { G.from = G.p; G.to = 0; G.t0 = performance.now(); G.ms = dur(gMs()) * G.p; stage.flyTo(gView(true), 1100); }
+function gClose() { G.from = G.p; G.to = 1; G.t0 = performance.now(); G.ms = dur(gMs()) * (1 - G.p); stage.flyTo(gView(false), 1100); }
+function gframe(now) {
+  if (!G) return;
+  if (G.p !== G.to) {
+    const t = G.ms <= 0 ? 1 : Math.min(1, Math.max(0, (now - G.t0) / G.ms));
+    G.p = G.from + (G.to - G.from) * t; G.obj.setP(G.p);
+    if (t >= 1) { G.p = G.to; render(); }
+  }
+  G.obj.update(stage.camera);
+  stage.cornerSegs = G.obj.segs();
+}
+const gIsOpen = () => G && G.to < 0.5;
+function thumbSVG(item, solid, on) {
+  const polys = item.net.faces.map((f) => f.poly), b = netBounds(polys), sc = Math.min(66 / b.w, 52 / b.h);
+  const cols = solid === 'pyramid' ? [COLORS[5], COLORS[0], COLORS[1], COLORS[2], COLORS[3]] : COLORS;
+  const g = item.net.faces.map((f) => `<polygon points="${f.poly.map(([u, v]) => `${((u - b.cu) * sc).toFixed(1)},${((v - b.cv) * sc).toFixed(1)}`).join(' ')}" fill="${cols[f.id % 6]}" stroke="${INK}" stroke-width="2.2" stroke-linejoin="miter"/>`).join('');
+  return `<svg viewBox="-36 -30 72 60" width="72" height="60" aria-hidden="true">${g}</svg>`;
+}
+function renderGeneric() {
+  syncSolidBar();
+  if (!gl) { panel.innerHTML = '<div class="readout"><div class="line">3D 画面打不开，这个模块需要 3D。</div></div>'; return; }
+  const id = S.solid, name = SNAME5[id], practice = ctxRef.getMode() === 'practice', open = gIsOpen();
+  const nv = variants(id), set = nv > 1 ? getNetSets()[id] : null;
+  let note = '';
+  if (id === 'cylinder') note = '两个圆形加一个长方形：长方形的长＝圆的一圈。';
+  else if (id === 'cone') note = '一个圆形加一个扇形：扇形的弧长＝圆的一圈。';
+  else note = '点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。';
+  let h = `<div class="readout"><div class="big" style="font-size:40px">${name}</div><div class="line">${nv > 1 ? `第 ${S.vi + 1} / ${nv} 种` : '展开图'} · ${open ? '展开了' : '合起来了'}</div></div>` +
+    `<button class="btn s6 red" data-a="gfold">${open ? '合起' : '展开'}</button>`;
+  if (set) h += `<div class="picker">${set.list.map((it, i) => `<button class="btn th${i === S.vi ? ' on' : ''}" data-a="gvar" data-i="${i}" aria-label="第${i + 1}种展开图" style="padding:3px">${thumbSVG(it, id)}</button>`).join('')}</div>`;
+  h += `<div class="sound-note">${note}</div>`;
+  if (practice) {
+    if (!S.gq) { const others = shuffle(SOLIDS.filter(([x]) => x !== id)).slice(0, 2), opts = shuffle([[id, name], ...others]); S.gq = { title: '这个展开图折起来是什么立体？', labels: opts.map((x) => x[1]), correct: opts.findIndex((x) => x[0] === id), cols: 1, goodMsg: `是${name}。`, badMsg: `是${name}。折起来看看。`, onDone: () => { if (G && gIsOpen()) { gClose(); } } }; }
+    panel.innerHTML = h + '<div id="gqbox" class="qbox"></div>';
+    renderQuiz(panel.querySelector('#gqbox'), S.gq, { next: () => { S.gq = null; if (G && !gIsOpen()) gOpen(); render(); }, burstHost: host });
+  } else panel.innerHTML = h + KEYS_E();
+}
+function genericAction(a, b) {
+  if (a === 'keys') { toggleKeys(); render(); return true; }
+  if (a === 'gfold') { if (G) { (gIsOpen() ? gClose() : gOpen()); render(); } return true; }
+  if (a === 'gvar') { selectSolid(S.solid, +b.dataset.i); return true; }
+  return false;
+}
+function genericKey(e) {
+  if (e.code === 'Space') { e.preventDefault(); if (e.type === 'keyup' || !G) return; (gIsOpen() ? gClose() : gOpen()); render(); return; }
+  if (e.type !== 'keydown') return;
+  if (e.key === 'r' || e.key === 'R') stage.reset();
+  else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && variants(S.solid) > 1) { const n = variants(S.solid); selectSolid(S.solid, (S.vi + (e.key === 'ArrowRight' ? 1 : n - 1)) % n); }
+}
+
 function onPanel(e) {
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
   const a = b.dataset.a;
+  if (S.solid !== 'cube' && genericAction(a, b)) return;
   if (a === 'keys') { toggleKeys(); render(); }
   else if (a === 'tab-explore') { S.tab = 'explore'; clearCallout(); showNet(S.i, false); }
   else if (a === 'tab-game') { S.tab = 'game'; newGame(); }
@@ -298,6 +415,7 @@ function onPanel(e) {
 
 function onKey(e) {
   const teach = ctxRef.getMode() === 'teach';
+  if (S.solid !== 'cube') { genericKey(e); return; }
   if (e.code === 'Space') {
     e.preventDefault(); if (e.type === 'keyup') return;
     if (S.tab === 'explore') { if (net) { setOpen(!net.open); render(); } }
@@ -316,21 +434,23 @@ export default {
   badge: '延伸',
   mount(body, ctx) {
     ctxRef = ctx;
-    S = { tab: 'explore', i: 0, g: null, t: 0 };
+    S = { tab: 'explore', i: 0, g: null, t: 0, solid: 'cube', vi: 0, gq: null };
+    G = null;
     pools = pools || buildPools();
-    body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div></div><div class="panel" id="panel"></div>';
-    host = body.querySelector('#host'); panel = body.querySelector('#panel');
+    body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div><div class="solidbar" id="solidbar"></div></div><div class="panel" id="panel"></div>';
+    host = body.querySelector('#host'); panel = body.querySelector('#panel'); solidBar = body.querySelector('#solidbar');
+    buildSolidBar();
     gl = stage.mount(host, { home: viewNow, onFrame: frame }).ok;
     net = null;
     if (gl) showNet(0, false);
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { S.ch = null; if (S.tab === 'game') newGame(); else render(); });
+    offMode = ctx.onMode(() => { S.ch = null; S.gq = null; if (S.solid !== 'cube') render(); else if (S.tab === 'game') newGame(); else render(); });
     render();
-    window.__m5 = { newChal, S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet };
+    window.__m5 = { newChal, S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet, G: () => G, selectSolid, netSets: () => netSets, gSetP, gOpen, gClose };
   },
   unmount() {
-    clearTimeout(S.t);
+    clearTimeout(S.t); G = null;
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);
     offMode?.(); net = null;
     stage.unmount(); delete window.__m5;
