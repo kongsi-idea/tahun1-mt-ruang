@@ -43,15 +43,24 @@ class Stage3D {
     // 灯光：半球光＋方向光（背光面亮度 ≥ 原色约 80%）
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0xfff0d0, 3.3));
     const sun = new THREE.DirectionalLight(0xffffff, 0.6);
-    sun.position.set(2.5, 7, 6); sun.castShadow = true;
+    sun.position.set(0.4, 14, 0.5); sun.castShadow = true;
     const ms = isSmall() ? 1024 : 2048;
     sun.shadow.mapSize.set(ms, ms);
-    Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6, near: 1, far: 25 });
+    Object.assign(sun.shadow.camera, { left: -3.5, right: 3.5, top: 3.5, bottom: -3.5, near: 4, far: 22 });
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02; sun.shadow.radius = 4;
     this.scene.add(sun);
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.17 }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.ShadowMaterial({ opacity: 0.12 }));
     ground.rotation.x = -HALF; ground.position.y = -0.002; ground.receiveShadow = true;
     this.scene.add(ground);
+    // 柔和接触阴影：模型正下方一团模糊的影子，永远不会跑到模型旁边
+    const cvs = document.createElement('canvas'); cvs.width = cvs.height = 128;
+    const g = cvs.getContext('2d'), grd = g.createRadialGradient(64, 64, 6, 64, 64, 62);
+    grd.addColorStop(0, 'rgba(59,42,26,.85)'); grd.addColorStop(0.55, 'rgba(59,42,26,.35)'); grd.addColorStop(1, 'rgba(59,42,26,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+    this.blobTex = new THREE.CanvasTexture(cvs); this.blobTex.colorSpace = THREE.SRGBColorSpace;
+    this.blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: this.blobTex, transparent: true, opacity: 0.3, depthWrite: false }));
+    this.blob.rotation.x = -HALF; this.blob.position.y = 0.003; this.blob.renderOrder = -1; this.blob.visible = false;
+    this.scene.add(this.blob);
     this.scene.add(this.content);
     this.scene.add(this.corners.mesh);
     this.cornerSegs = [];
@@ -82,7 +91,7 @@ class Stage3D {
     this.cornerSegs = [];
     this.mounted = true; this.paused = false;
     this._ro = new ResizeObserver(() => this.resize());
-    this._ro.observe(this.cv);
+    this._ro.observe(this.cv); this._ro.observe(this.renderer.domElement);
     this.resize();
     if (home) { const h0 = typeof home === 'function' ? home() : home; this.place(h0.target, h0.sph); }
     this._raf = requestAnimationFrame(this._tick);
@@ -101,7 +110,15 @@ class Stage3D {
     this.hooks = []; this.cornerSegs = [];
   }
 
+  // 接触阴影的大小（半径 rx、rz）；k = 浓淡系数
+  setFootprint(rx, rz = rx, k = 1) {
+    this.blob.visible = k > 0.02;
+    this.blob.scale.set(rx * 2.25, rz * 2.25, 1);
+    this.blob.material.opacity = 0.3 * k;
+  }
+
   clear() {
+    if (this.blob) this.blob.visible = false;
     for (const ch of [...this.content.children]) { this.content.remove(ch); disposeTree(ch); }
   }
 
@@ -133,7 +150,8 @@ class Stage3D {
 
   resize() {
     if (!this.mounted) return;
-    const w = Math.max(this.cv.clientWidth, 1), h = Math.max(this.cv.clientHeight, 1);
+    const cs = this.renderer.domElement;
+    const w = Math.max(cs.clientWidth || this.cv.clientWidth, 1), h = Math.max(cs.clientHeight || this.cv.clientHeight, 1);
     this.size = { w, h };
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;

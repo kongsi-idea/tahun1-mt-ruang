@@ -39,6 +39,7 @@ function loadShape(i) {
   if (gl) {
     stage.content.add(shape.group);
     shape.faces.forEach((f) => (f.base = f.mesh.material.color.clone()));
+    stage.setFootprint(...shape.foot);
   } else shape.faces.forEach((f) => (f.base = new THREE.Color()));
   S.name = false; clearMarks();
 }
@@ -87,7 +88,7 @@ function applyMarks() {
 }
 
 function frame() {
-  if (!shape || S.tab !== 'know') return;
+  if (!shape) return;
   const cam = stage.camera;
   shape.update(cam);
   stage.cornerSegs = shape.segs();
@@ -168,7 +169,7 @@ const KEYS = () => keysHTML(K);
 function render() {
   const practice = ctxRef.getMode() === 'practice';
   host.classList.toggle('life-on', S.tab === 'life');
-  stage.paused = S.tab === 'life' || !gl;
+  syncMini(practice);
   nameTag();
   renderChips();
   if (S.tab === 'life') return renderLife(practice);
@@ -179,12 +180,34 @@ function render() {
 }
 
 // ———— 生活中的立体 ————
+const lifeRevealed = (practice) => S.tab === 'life' && (practice ? !!S.q?.done : S.lifeShown);
+
+// 生活中的立体：一开始完全没有 3D；揭晓（老师）或作答（练习）后，旁边才并排出现同方向的立体小模型
+function syncMini(practice) {
+  const o = OBJECTS[S.life], rev = lifeRevealed(practice);
+  host.classList.toggle('reveal', rev);
+  if (!gl) return;
+  if (rev) {
+    if (S.miniKey !== o.id) {
+      stage.clear(); stage.cornerSegs = [];
+      shape = buildShape(o.solid, { flip: !!o.flip });
+      stage.content.add(shape.group); stage.setFootprint(...shape.foot);
+      S.miniKey = o.id;
+      const h0 = home(); stage.fly = null; stage.controls.enabled = true; stage.place(h0.target, h0.sph);
+    }
+    stage.paused = false;
+  } else {
+    if (S.tab === 'life' && (S.miniKey || shape)) { stage.clear(); stage.cornerSegs = []; shape = null; S.miniKey = null; }
+    stage.paused = S.tab === 'life';
+  }
+}
+
 function renderLife(practice) {
   const o = OBJECTS[S.life];
   let lifeEl = host.querySelector('.life');
   if (!lifeEl) { lifeEl = document.createElement('div'); lifeEl.className = 'life'; (host.querySelector('.cv') || host).appendChild(lifeEl); }
-  const ans = S.lifeShown || (practice && S.q?.done);
-  lifeEl.innerHTML = `${o.svg()}<div class="nm">${o.name}</div><div class="ans${ans ? '' : ' empty'}">它像：${NAMES[o.solid]}</div>`;
+  const ans = lifeRevealed(practice);
+  lifeEl.innerHTML = `${o.svg()}<div class="nm${ans ? '' : ' hid'}">${ans ? o.name : '这是什么？'}</div><div class="ans${ans ? '' : ' empty'}">它像：${NAMES[o.solid]}</div>`;
   if (!practice) {
     panel.innerHTML = tabsHTML() + `<div class="readout"><div class="q">老师问：它像哪一种立体？</div></div>
     <div class="grp6"><button class="btn s6 red" data-a="reveal">${S.lifeShown ? '再藏起来' : '揭晓'}</button>
@@ -243,7 +266,7 @@ function renderQuizPanel(life) {
       q.fbHTML = (ok ? '<span class="em">答对了！好棒！</span>' : '<span class="em">没关系，再看一看</span>') + msg;
       if (ok) burst(host);
       if (!ok && q.type === 'count') { S.mode = q.k; S.n = total(q.k); S.cur = -1; S.zero = S.n === 0; applyMarks(); }
-      renderQuizPanel(life); nameTag();
+      if (life) render(); else { renderQuizPanel(life); nameTag(); }
     });
   }
 }
@@ -258,8 +281,8 @@ function onPanel(e) {
   else if (a === 'all') all();
   else if (a === 'clear') { S.name = false; clearMarks(); render(); }
   else if (a === 'name') { S.name = !S.name; render(); }
-  else if (a === 'tab-know') { S.tab = 'know'; S.q = null; render(); }
-  else if (a === 'tab-life') { S.tab = 'life'; S.q = null; S.lifeShown = false; render(); }
+  else if (a === 'tab-know') { S.tab = 'know'; S.q = null; S.miniKey = null; host.classList.remove('reveal'); stage.paused = !gl; loadShape(S.idx); if (gl) { stage.fly = null; stage.controls.enabled = true; const h0 = home(); stage.place(h0.target, h0.sph); } render(); }
+  else if (a === 'tab-life') { clearMarks(); if (gl) { stage.clear(); stage.cornerSegs = []; } shape = null; S.miniKey = null; S.tab = 'life'; S.q = null; S.lifeShown = false; render(); }
   else if (a === 'reveal') { S.lifeShown = !S.lifeShown; render(); }
   else if (a === 'lnext') lifeMove(1);
   else if (a === 'lprev') lifeMove(-1);
@@ -294,7 +317,7 @@ export default {
   title: 'M1 立体图形',
   mount(body, ctx) {
     ctxRef = ctx; markers = [];
-    S = { tab: 'know', idx: 0, name: false, mode: null, n: 0, cur: -1, zero: false, life: 0, lifeShown: false, q: null };
+    S = { tab: 'know', miniKey: null, idx: 0, name: false, mode: null, n: 0, cur: -1, zero: false, life: 0, lifeShown: false, q: null };
     body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div><div class="chips" id="chips"></div></div><div class="panel" id="panel"></div>';
     host = body.querySelector('#host'); panel = body.querySelector('#panel'); chipsEl = body.querySelector('#chips');
     const r = stage.mount(host, { home, onFrame: frame });
@@ -304,7 +327,7 @@ export default {
     loadShape(0);
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { S.q = null; S.name = false; clearMarks(); render(); });
+    offMode = ctx.onMode(() => { S.q = null; S.name = false; S.lifeShown = false; clearMarks(); render(); });
     render();
     window.__m1 = { S: () => S, shape: () => shape, switchShape, setMode, step, all, total, describe };
   },

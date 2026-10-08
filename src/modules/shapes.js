@@ -109,34 +109,36 @@ function cylinder() {
   return shape;
 }
 
-function cone() {
+function cone(flip = false) {
   const r = 0.9, h = 1.9, group = new THREE.Group();
-  const lg = new THREE.ConeGeometry(r, h, SEG, 1, true); lg.translate(0, h / 2, 0);
-  const lat = curvedMesh(lg, COLORS[0]), bot = disc(r, 0, false, COLORS[1]);
+  const ya = flip ? 0 : h, yb = flip ? h : 0; // 尖端、底面的高度（flip＝尖端朝下）
+  const lg = new THREE.ConeGeometry(r, h, SEG, 1, true); if (flip) lg.rotateX(Math.PI); lg.translate(0, h / 2, 0);
+  const lat = curvedMesh(lg, COLORS[0]), bot = disc(r, yb, flip, COLORS[1]);
   group.add(lat, bot);
-  const apex = V(0, h, 0);
-  const shape = { id: 'cone', name: NAMES.cone, group, verts: [apex], occluders: [lat, bot] };
-  const bA = V(0, -0.03, 0);
+  const apex = V(0, ya, 0);
+  const shape = { id: 'cone', name: NAMES.cone, group, verts: [apex], occluders: [lat, bot], foot: [0.9, 0.9] };
+  if (flip) shape.foot = [0.35, 0.35];
+  const bA = V(0, yb + (flip ? 0.03 : -0.03), 0);
   shape.faces = [
-    { type: '曲面', note: '', mesh: lat, anchor: (cam) => { const a = frontAngle(cam), f = 0.38, rr = r * (1 - f) + 0.04; return V(Math.cos(a) * rr, h * f, Math.sin(a) * rr); } },
+    { type: '曲面', note: '', mesh: lat, anchor: (cam) => { const a = frontAngle(cam), f = 0.38, rr = r * (1 - f) + 0.04; return V(Math.cos(a) * rr, yb + (ya - yb) * f, Math.sin(a) * rr); } },
     { type: '平面', note: '圆形', mesh: bot, anchor: () => bA },
   ];
-  const ptsB = circlePts(r, 0, SEG);
+  const ptsB = circlePts(r, yb, SEG);
   group.add(lineFrom(ptsB));
-  shape.edges = [{ type: 'curve', hl: addHl(group, ptsB, 'curve'), anchor: (cam) => { const a = frontAngle(cam); return V(Math.cos(a) * r, 0, Math.sin(a) * r); } }];
+  shape.edges = [{ type: 'curve', hl: addHl(group, ptsB, 'curve'), anchor: (cam) => { const a = frontAngle(cam); return V(Math.cos(a) * r, yb, Math.sin(a) * r); } }];
   const sil = [dynamicLine(2), dynamicLine(2)]; sil.forEach((s) => group.add(s));
   let cur = [];
   shape.segs = () => cur;
   shape.update = (cam) => {
-    const c = cam.position.clone(); if (Math.abs(c.y - h) < 1e-3) c.y += 2e-3;
-    const s = h / (c.y - h);
+    const c = cam.position.clone(); if (Math.abs(c.y - ya) < 1e-3) c.y += 2e-3;
+    const s = (yb - ya) / (ya - c.y);
     const P = apex.clone().addScaledVector(apex.clone().sub(c), s);
     const D = Math.hypot(P.x, P.z);
     cur = [];
     if (D > r * 1.0005) {
       const psi = Math.atan2(P.z, P.x), phi = Math.acos(r / D);
       [psi + phi, psi - phi].forEach((t, i) => {
-        const T = V(r * Math.cos(t), 0, r * Math.sin(t));
+        const T = V(r * Math.cos(t), yb, r * Math.sin(t));
         setDynamic(sil[i], [apex, T]); sil[i].visible = true; cur.push([apex, T]);
       });
     } else sil.forEach((l) => (l.visible = false));
@@ -165,7 +167,13 @@ function sphere() {
   return shape;
 }
 
-export function buildShape(id) {
+export function buildShape(id, opts = {}) {
+  const sh = build1(id, opts);
+  if (!sh.foot) sh.foot = FOOT[id];
+  return sh;
+}
+const FOOT = { cube: [0.85, 0.85], cuboid: [1.2, 0.8], pyramid: [0.95, 0.95], cone: [0.9, 0.9], cylinder: [0.85, 0.85], sphere: [0.62, 0.62] };
+function build1(id, opts) {
   switch (id) {
     case 'cube': return box('cube', 1.7, 1.7, 1.7, Array(6).fill('正方形'), COLORS);
     case 'cuboid': return box('cuboid', 2.4, 1.3, 1.6, Array(6).fill('长方形'), COLORS);
@@ -175,7 +183,7 @@ export function buildShape(id) {
       return polyhedron('pyramid', v, [[0, 1, 2, 3], [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]],
         ['正方形', '三角形', '三角形', '三角形', '三角形'], [COLORS[5], COLORS[0], COLORS[1], COLORS[2], COLORS[3]]);
     }
-    case 'cone': return cone();
+    case 'cone': return cone(!!opts.flip);
     case 'cylinder': return cylinder();
     case 'sphere': return sphere();
   }

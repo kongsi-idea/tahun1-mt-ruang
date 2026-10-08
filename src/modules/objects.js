@@ -6,6 +6,10 @@ const poly = (a, fill, w = 6) => `<polygon points="${pts(a)}" fill="${fill}" ${s
 const shadow = (cx = 120, cy = 214, rx = 80, ry = 11) => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="rgba(59,42,26,.16)"/>`;
 const svg = (body) => `<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">${body}</svg>`;
 
+// 轮廓用单条闭合路径（尖角、无毛刺）＋内部三条线，不用三个多边形叠描边
+const outline = (F, F1, L0, L1, R0, R1, B1) =>
+  `<path d="M${pts([F1])} L${pts([L1])} M${pts([F1])} L${pts([R1])} M${pts([F1])} L${pts([F])}" fill="none" ${st(6, 'round')}/><path d="M${pts([B1])} L${pts([R1])} L${pts([R0])} L${pts([F])} L${pts([L0])} L${pts([L1])} Z" fill="none" ${st(6)}/>`;
+
 // 等角长方体：F=前下角，a/b=左/右边长，h=高
 function isoBox(F, a, b, h, [ct, cl, cr]) {
   const k = 0.866, F1 = [F[0], F[1] - h], L0 = [F[0] - k * a, F[1] - 0.5 * a], L1 = [L0[0], L0[1] - h];
@@ -17,7 +21,7 @@ function isoBox(F, a, b, h, [ct, cl, cr]) {
   return {
     F, F1, L0, L1, R0, R1, B1, top,
     mTop: mat(L1, d(F1, L1), d(B1, L1)), mLeft: mat(L1, d(F1, L1), d(L0, L1)), mRight: mat(F1, d(R1, F1), d(F, F1)),
-    body: poly([F1, L1, B1, R1], ct) + poly([F, L0, L1, F1], cl) + poly([F, R0, R1, F1], cr),
+    body: `<polygon points="${pts([F1, L1, B1, R1])}" fill="${ct}"/><polygon points="${pts([F, L0, L1, F1])}" fill="${cl}"/><polygon points="${pts([F, R0, R1, F1])}" fill="${cr}"/>` + outline(F, F1, L0, L1, R0, R1, B1),
   };
 }
 const pip = (x, y) => `<circle cx="${x}" cy="${y}" r=".1" fill="${INK}"/>`;
@@ -40,8 +44,8 @@ function rubik() {
     for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) s += `<rect x="${i / 3}" y="${j / 3}" width=".3333" height=".3333" fill="${pal[(i + j * 2) % 3 === 0 ? 0 : (i * 2 + j) % 3]}" stroke="${INK}" stroke-width="3" vector-effect="non-scaling-stroke"/>`;
     return `<g transform="${m}">${s}</g>`;
   };
-  const outline = poly([b.F1, b.L1, b.B1, b.R1], 'none') + poly([b.F, b.L0, b.L1, b.F1], 'none') + poly([b.F, b.R0, b.R1, b.F1], 'none');
-  return svg(shadow(120, 200, 86) + grid(b.mTop, ['#FFC93C', '#F2564B', '#FFFFFF']) + grid(b.mLeft, ['#3E8EDE', '#46B97A', '#FFC93C']) + grid(b.mRight, ['#F2564B', '#FF8A3D', '#3E8EDE']) + outline);
+  const ol = outline(b.F, b.F1, b.L0, b.L1, b.R0, b.R1, b.B1);
+  return svg(shadow(120, 200, 86) + grid(b.mTop, ['#FFC93C', '#F2564B', '#FFFFFF']) + grid(b.mLeft, ['#3E8EDE', '#46B97A', '#FFC93C']) + grid(b.mRight, ['#F2564B', '#FF8A3D', '#3E8EDE']) + ol);
 }
 function carton() {
   const b = isoBox([120, 196], 100, 72, 64, ['#E8B368', '#D29A4A', '#B98036']);
@@ -61,14 +65,16 @@ function tissue() {
 function pyramid() {
   const Fr = [120, 196], Le = [30, 166], Re = [210, 166], Ap = [120, 38];
   return svg(`<ellipse cx="120" cy="190" rx="112" ry="30" fill="#F7E3A5"/><circle cx="196" cy="48" r="24" fill="#FF8A3D" ${st(5, 'round')}/>` +
-    poly([Le, Fr, Ap], '#FFC93C') + poly([Fr, Re, Ap], '#E89F1A') +
-    `<g stroke="${INK}" stroke-width="3" opacity=".45" fill="none"><path d="M${75},${101} L${120},${124}M${51},${134} L${120},${160}M${165},${101} L${120},${124}M${189},${134} L${120},${160}"/></g>`);
+    poly([Le, Fr, Ap], '#FFC93C', 0) + poly([Fr, Re, Ap], '#E89F1A', 0) +
+    `<g stroke="${INK}" stroke-width="3" opacity=".45" fill="none"><path d="M${75},${101} L${120},${124}M${51},${134} L${120},${160}M${165},${101} L${120},${124}M${189},${134} L${120},${160}"/></g>` +
+    `<path d="M${Ap} L${Fr}" fill="none" ${st(6, 'round')}/><path d="M${Le} L${Ap} L${Re} L${Fr} Z" fill="none" ${st(6)}/>`);
 }
 function tent() {
   const Fr = [120, 200], Le = [34, 170], Re = [206, 170], Ap = [120, 56];
   return svg(shadow(120, 204, 100, 12) +
-    poly([Le, Fr, Ap], '#F2564B') + poly([Fr, Re, Ap], '#D2392F') +
-    poly([[96, 196], [120, 200], [120, 122], [102, 130]], INK, 4) +
+    poly([Le, Fr, Ap], '#F2564B', 0) + poly([Fr, Re, Ap], '#D2392F', 0) +
+    poly([[96, 196], [120, 200], [120, 122], [102, 130]], INK, 0) +
+    `<path d="M${Ap} L${Fr}" fill="none" ${st(6, 'round')}/><path d="M${Le} L${Ap} L${Re} L${Fr} Z" fill="none" ${st(6)}/>` +
     `<line x1="120" y1="56" x2="120" y2="22" ${st(5, 'round')}/><polygon points="120,22 154,32 120,44" fill="#FFC93C" ${st(5)}/>`);
 }
 function iceCream() {
@@ -128,7 +134,7 @@ function orange() {
 export const OBJECTS = [
   { id: 'dice', name: '骰子', solid: 'cube', svg: dice },
   { id: 'can', name: '罐头', solid: 'cylinder', svg: can },
-  { id: 'icecream', name: '雪糕筒', solid: 'cone', svg: iceCream },
+  { id: 'icecream', name: '雪糕筒', solid: 'cone', flip: true, svg: iceCream },
   { id: 'basketball', name: '篮球', solid: 'sphere', svg: basketball },
   { id: 'carton', name: '纸箱', solid: 'cuboid', svg: carton },
   { id: 'pyramid', name: '金字塔', solid: 'pyramid', svg: pyramid },

@@ -41,34 +41,48 @@ async function route() {
   window.scrollTo(0, 0);
 }
 
+// 图标：120×120 同一画布、同样的线宽。面只填色不描边；外轮廓用单条闭合路径描边，所以转角是干净的尖角，没有多余的毛刺。
+const SW = 'stroke="#3B2A1A" stroke-width="5"';
 const ICON = {
-  m1: '<svg viewBox="0 0 160 140" aria-hidden="true"><polygon points="80,14 138,44 80,74 22,44" fill="#FFC93C" stroke="#3B2A1A" stroke-width="5" stroke-linejoin="miter"/><polygon points="22,44 80,74 80,132 22,102" fill="#F2564B" stroke="#3B2A1A" stroke-width="5" stroke-linejoin="miter"/><polygon points="80,74 138,44 138,102 80,132" fill="#3E8EDE" stroke="#3B2A1A" stroke-width="5" stroke-linejoin="miter"/></svg>',
-  m2: '<svg viewBox="0 0 160 140" aria-hidden="true"><rect x="12" y="14" width="56" height="56" fill="#F2564B" stroke="#3B2A1A" stroke-width="5"/><circle cx="118" cy="44" r="30" fill="#FFC93C" stroke="#3B2A1A" stroke-width="5"/><polygon points="80,128 40,76 120,76" fill="#46B97A" stroke="#3B2A1A" stroke-width="5" stroke-linejoin="miter"/></svg>',
-  m3: '<svg viewBox="0 0 160 140" aria-hidden="true"><rect x="8" y="45" width="36" height="36" fill="#F2564B" stroke="#3B2A1A" stroke-width="5"/><circle cx="80" cy="63" r="18" fill="#FFC93C" stroke="#3B2A1A" stroke-width="5"/><rect x="116" y="45" width="36" height="36" fill="#F2564B" stroke="#3B2A1A" stroke-width="5"/><text x="80" y="124" font-size="30" font-weight="900" text-anchor="middle" fill="#3B2A1A">?</text></svg>',
-  m4: '<svg viewBox="0 0 160 140" aria-hidden="true"><rect x="20" y="70" width="60" height="56" fill="#3E8EDE" stroke="#3B2A1A" stroke-width="5"/><rect x="80" y="86" width="60" height="40" fill="#46B97A" stroke="#3B2A1A" stroke-width="5"/><polygon points="50,18 20,70 80,70" fill="#F2564B" stroke="#3B2A1A" stroke-width="5" stroke-linejoin="miter"/></svg>',
-  m5: '<svg viewBox="0 0 200 110" aria-hidden="true"><g stroke="#3B2A1A" stroke-width="5"><rect x="62" y="6" width="32" height="32" fill="#F2564B"/><rect x="10" y="38" width="32" height="32" fill="#FFC93C"/><rect x="42" y="38" width="32" height="32" fill="#3E8EDE"/><rect x="74" y="38" width="32" height="32" fill="#46B97A"/><rect x="106" y="38" width="32" height="32" fill="#FF8A3D"/><rect x="42" y="70" width="32" height="32" fill="#8E6BD8"/></g></svg>',
+  m1: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><polygon points="60,16 100,39 60,62 20,39" fill="#FFC93C"/><polygon points="20,39 60,62 60,108 20,85" fill="#F2564B"/><polygon points="60,62 100,39 100,85 60,108" fill="#3E8EDE"/><path d="M60,62 L20,39 M60,62 L100,39 M60,62 L60,108" fill="none" ${SW} stroke-linecap="round"/><path d="M60,16 L100,39 L100,85 L60,108 L20,85 L20,39 Z" fill="none" ${SW} stroke-linejoin="miter"/></svg>`,
+  m2: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="12" y="12" width="44" height="44" fill="#F2564B" ${SW}/><circle cx="88" cy="34" r="24" fill="#FFC93C" ${SW}/><path d="M60,66 L96,112 L24,112 Z" fill="#46B97A" ${SW} stroke-linejoin="miter"/></svg>`,
+  m3: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="5" y="14" width="34" height="34" fill="#F2564B" ${SW}/><circle cx="60" cy="31" r="17" fill="#FFC93C" ${SW}/><rect x="81" y="14" width="34" height="34" fill="#F2564B" ${SW}/><rect x="5" y="68" width="34" height="34" fill="#FFC93C" ${SW}/><circle cx="60" cy="85" r="17" fill="#fff" ${SW}/><text x="60" y="97" font-size="32" font-weight="900" text-anchor="middle" fill="#3B2A1A">?</text><rect x="81" y="68" width="34" height="34" fill="#fff" ${SW}/></svg>`,
+  m4: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><path d="M12,108 L12,70 L44,24 L76,70 L76,108 Z" fill="#3E8EDE"/><path d="M12,70 L44,24 L76,70 Z" fill="#F2564B"/><rect x="76" y="80" width="32" height="28" fill="#46B97A"/><path d="M12,108 L12,70 L44,24 L76,70 L76,108 Z M12,70 L76,70" fill="none" ${SW} stroke-linejoin="miter"/><path d="M76,80 L108,80 L108,108 L76,108" fill="none" ${SW} stroke-linejoin="miter"/></svg>`,
+  m5: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><g ${SW}><rect x="34" y="14" width="26" height="26" fill="#F2564B"/><rect x="8" y="40" width="26" height="26" fill="#FFC93C"/><rect x="34" y="40" width="26" height="26" fill="#3E8EDE"/><rect x="60" y="40" width="26" height="26" fill="#46B97A"/><rect x="86" y="40" width="26" height="26" fill="#FF8A3D"/><rect x="60" y="66" width="26" height="26" fill="#8E6BD8"/></g></svg>`,
 };
+const LOGO = `<svg viewBox="0 0 120 120" aria-hidden="true"><polygon points="60,16 100,39 60,62 20,39" fill="#FFC93C"/><polygon points="20,39 60,62 60,108 20,85" fill="#F2564B"/><polygon points="60,62 100,39 100,85 60,108" fill="#3E8EDE"/><path d="M60,62 L20,39 M60,62 L100,39 M60,62 L60,108" fill="none" stroke="#3B2A1A" stroke-width="7"/><path d="M60,16 L100,39 L100,85 L60,108 L20,85 L20,39 Z" fill="none" stroke="#3B2A1A" stroke-width="7"/></svg>`;
+const CAP = { teach: '老师操作，学生先猜后揭晓', practice: '自己点选答案，答错也没关系' };
+const NAME = { teach: '老师讲解', practice: '自己练习' };
+
+function toast(msg) {
+  document.querySelector('.toast')?.remove();
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2200);
+}
 
 function home() {
   const root = document.createElement('div');
   const top = document.createElement('div'); top.className = 'top';
-  top.innerHTML = '<h1>空间小天地</h1><span class="grow"></span>';
+  top.innerHTML = `<span class="logo">${LOGO}空间小天地</span><span class="grow"></span>`;
   const mt = modeToggle(); top.appendChild(mt.el);
-  offMode = mt.off;
-  const card = (id, t, d, soon) => soon
-    ? `<div class="card soon" aria-disabled="true">${ICON[id]}<span class="soon-tag">即将推出</span><span class="t">${t}</span><span class="d">${d}</span></div>`
-    : `<a class="card" href="#/${id}" data-id="${id}">${ICON[id]}<span class="t">${t}</span><span class="d">${d}</span></a>`;
   const h = document.createElement('div'); h.className = 'home';
-  h.innerHTML = `<div><h2>空间小天地</h2><p class="sub">一年级数学 · 7.0 空间　选一个来玩吧</p></div>
+  const card = (id, cls, t, d, badge, soon) => soon
+    ? `<button type="button" class="card ${cls}" data-soon="${t}">${ICON[id]}<span class="badge">即将推出</span><span class="t">${t}</span><span class="d">${d}</span></button>`
+    : `<a class="card ${cls}" href="#/${id}" data-id="${id}">${ICON[id]}${badge ? `<span class="badge ext">${badge}</span>` : ''}<span class="t">${t}</span><span class="d">${d}</span></a>`;
+  h.innerHTML = `<div class="hero"><p class="hello"><span>一年级数学 · 7.0 空间</span> <span>选一个来玩吧</span></p><p class="mode-cap" id="modeCap"></p></div>
   <div class="cards">
-    ${card('m1', 'M1 立体图形', '认识 · 面边顶点 · 生活中的立体')}
-    ${card('m2', 'M2 平面图形', '正方形 长方形 三角形 圆形', true)}
-    ${card('m3', 'M3 模式排列', '找出规律，猜一猜', true)}
-    ${card('m4', 'M4 创意图案', '拼图案 · 搭模型', true)}
-  </div>
-  <a class="card ext" href="#/m5" data-id="m5">${ICON.m5}<span class="txt"><span class="t">M5 展开图　<span class="ext-tag">延伸</span></span><span class="d">正方体的 11 种展开图 · 这个能折成正方体吗？（不在一年级 DSKP 内）</span></span></a>
-  <p class="hint-line">右上角可以切换「老师讲解」和「自己练习」。</p>`;
+    ${card('m1', 'big', 'M1 立体图形', '认识立体 · 数面边顶点')}
+    ${card('m2', 'big', 'M2 平面图形', '认识平面图形', null, true)}
+    ${card('m3', '', 'M3 模式排列', '找规律，猜一猜', null, true)}
+    ${card('m4', '', 'M4 创意图案', '拼图案，搭模型', null, true)}
+    ${card('m5', 'm5', 'M5 展开图', '11 种 · 能折吗？', '延伸')}
+  </div>`;
+  const cap = h.querySelector('#modeCap');
+  const sync = () => { cap.innerHTML = `<b>${NAME[getMode()]}</b>${CAP[getMode()]}`; };
+  sync(); const off2 = onMode(sync);
+  h.addEventListener('click', (e) => { const c = e.target.closest('[data-soon]'); if (c) toast(`${c.dataset.soon} 还在准备中，下次再来玩！`); });
   root.append(top, h); app.appendChild(root);
+  const o1 = mt.off; offMode = () => { o1(); off2(); };
 }
 
 addEventListener('hashchange', route);
