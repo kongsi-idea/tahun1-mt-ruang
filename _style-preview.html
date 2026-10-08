@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>空间小天地 · 三个视觉方向</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif;background:#eee;padding:24px;color:#222}
+h1{font-size:20px;margin-bottom:16px}
+.wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px}
+.card{border-radius:22px;padding:22px;position:relative;overflow:hidden}
+.card h2{font-size:22px;margin-bottom:4px}
+.card .adj{font-size:13px;margin-bottom:14px;opacity:.85}
+.stage{height:190px;display:grid;place-items:center;perspective:700px}
+.cube{width:96px;height:96px;position:relative;transform-style:preserve-3d;animation:spin 9s linear infinite}
+@keyframes spin{from{transform:rotateX(-24deg) rotateY(0)}to{transform:rotateX(-24deg) rotateY(360deg)}}
+.f{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:22px}
+.f:nth-child(1){transform:translateZ(48px)}.f:nth-child(2){transform:rotateY(90deg) translateZ(48px)}
+.f:nth-child(3){transform:rotateY(180deg) translateZ(48px)}.f:nth-child(4){transform:rotateY(-90deg) translateZ(48px)}
+.f:nth-child(5){transform:rotateX(90deg) translateZ(48px)}.f:nth-child(6){transform:rotateX(-90deg) translateZ(48px)}
+.row{display:flex;gap:12px;align-items:center;justify-content:center;margin:12px 0;height:56px}
+.sq,.ci,.tr{width:48px;height:48px}.ci{border-radius:50%}
+.tr{clip-path:polygon(50% 4%,96% 92%,4% 92%)}
+.lab{font-size:12px;text-align:center;opacity:.8;margin-top:-4px}
+.chips{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.chips span{font-size:11px;padding:5px 8px;border-radius:8px}
+.btn{display:block;margin:14px auto 0;padding:12px 26px;font-size:18px;font-weight:800;cursor:pointer}
+.spec{font-size:12px;margin-top:12px;line-height:1.6;opacity:.85}
+
+/* A 积木工坊 */
+.A{background:#FFF4DC;color:#3B2A1A}
+.A .f{border:4px solid #3B2A1A;border-radius:0}
+.vtx{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px;border-radius:50%;background:#fff;border:4px solid #3B2A1A;transform-style:preserve-3d}
+.stage{touch-action:none;cursor:grab}
+.A .f:nth-child(odd){background:#F2564B}.A .f:nth-child(even){background:#FFC93C}.A .f:nth-child(5){background:#3E8EDE}.A .f:nth-child(6){background:#46B97A}
+.A .sq,.A .ci,.A .tr{background:#F2564B;border:4px solid #3B2A1A}
+.A .ci{background:#3E8EDE}.A .tr{background:#FFC93C;border:0}
+.A .btn{background:#F2564B;color:#fff;border:4px solid #3B2A1A;border-radius:18px;box-shadow:0 6px 0 #3B2A1A}
+.A .btn:active{transform:translateY(5px);box-shadow:0 1px 0 #3B2A1A}
+/* B 折纸剪纸 */
+.B{background:#E9DCC3;color:#2F3A33;background-image:radial-gradient(#d8c9ab 1px,transparent 1.5px);background-size:14px 14px}
+.B .f{background:#FBF6EA;border:2px dashed #8B6F47;color:#8B6F47}
+.B .f:nth-child(2){background:#F1E6CF}.B .f:nth-child(4){background:#F1E6CF}.B .f:nth-child(5){background:#fff}.B .f:nth-child(6){background:#E4D5B7}
+.B .sq,.B .ci,.B .tr{background:#C8553D;box-shadow:3px 4px 0 rgba(47,58,51,.35)}
+.B .ci{background:#2F6F62}.B .tr{background:#E0A83A;clip-path:polygon(50% 4%,96% 92%,4% 92%);filter:drop-shadow(3px 4px 0 rgba(47,58,51,.35));box-shadow:none}
+.B .btn{background:#2F6F62;color:#FBF6EA;border:0;border-radius:6px;box-shadow:3px 4px 0 rgba(47,58,51,.4)}
+/* C 蓝图包豪斯 */
+.C{background:#F5F1E8;color:#14213D;background-image:linear-gradient(#d9d3c3 1px,transparent 1px),linear-gradient(90deg,#d9d3c3 1px,transparent 1px);background-size:24px 24px}
+.C .f{border:3px solid #14213D;background:#fff;color:#14213D}
+.C .f:nth-child(1){background:#1D4ED8;color:#fff}.C .f:nth-child(2){background:#fff}.C .f:nth-child(3){background:#F5B700}.C .f:nth-child(4){background:#fff}.C .f:nth-child(5){background:#E5383B;color:#fff}.C .f:nth-child(6){background:#fff}
+.C .sq,.C .ci,.C .tr{background:#1D4ED8;border:3px solid #14213D}
+.C .ci{background:#E5383B}.C .tr{background:#F5B700;border:0}
+.C .btn{background:#14213D;color:#F5F1E8;border:0;border-radius:0;letter-spacing:2px}
+</style></head><body>
+<h1>空间小天地 · 三个视觉方向（立方体可拖拽旋转）</h1>
+<div class="wrap">
+
+<section class="card A"><h2>A 积木工坊</h2><div class="adj">明亮 · 厚实 · 好玩 · 可触摸</div>
+<div class="stage"><div class="cube"><div class="f">正</div><div class="f">方</div><div class="f">体</div><div class="f">6</div><div class="f">面</div><div class="f">8</div></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="tr"></div><div class="sq" style="width:72px;height:40px;background:#46B97A"></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="sq"></div><div class="ci"></div><b style="font-size:28px">?</b></div>
+<button class="btn">看下一个！</button>
+<div class="chips"><span style="background:#F2564B;color:#fff">#F2564B</span><span style="background:#FFC93C">#FFC93C</span><span style="background:#3E8EDE;color:#fff">#3E8EDE</span><span style="background:#46B97A">#46B97A</span><span style="background:#3B2A1A;color:#fff">#3B2A1A</span></div>
+<div class="spec">粗黑描边＋硬阴影，立体一律直角尖角（顶点才摸得到），字体圆润加粗。像真的积木：每种图形固定一个颜色，学生一眼记住。点击有「按下去」的位移。<br><b>风险</b>：最像玩具，对 6–7 岁最亲切，但颜色多，「形状＝颜色」会干扰辨认，要克制。</div></section>
+
+<section class="card B"><h2>B 折纸剪纸</h2><div class="adj">温润 · 手作 · 安静 · 纸感</div>
+<div class="stage"><div class="cube"><div class="f">正</div><div class="f">方</div><div class="f">体</div><div class="f">6</div><div class="f">面</div><div class="f">8</div></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="tr"></div><div class="sq" style="width:72px;height:40px;background:#2F6F62"></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="sq"></div><div class="ci"></div><b style="font-size:28px">?</b></div>
+<button class="btn">看下一个</button>
+<div class="chips"><span style="background:#C8553D;color:#fff">#C8553D</span><span style="background:#E0A83A">#E0A83A</span><span style="background:#2F6F62;color:#fff">#2F6F62</span><span style="background:#FBF6EA">#FBF6EA</span><span style="background:#2F3A33;color:#fff">#2F3A33</span></div>
+<div class="spec">牛皮纸底＋虚线折痕，图形像剪下来的彩纸，带纸张投影。<b>和展开图最搭</b>：折叠动画自然，延伸区不突兀。<br><b>风险</b>：色调偏沉稳，投到 Meet 上要把对比度拉高，活力不如 A。</div></section>
+
+<section class="card C"><h2>C 方格包豪斯</h2><div class="adj">清晰 · 几何 · 对称 · 高对比</div>
+<div class="stage"><div class="cube"><div class="f">正</div><div class="f">方</div><div class="f">体</div><div class="f">6</div><div class="f">面</div><div class="f">8</div></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="tr"></div><div class="sq" style="width:72px;height:40px;background:#E5383B"></div></div>
+<div class="row"><div class="sq"></div><div class="ci"></div><div class="sq"></div><div class="ci"></div><b style="font-size:28px">?</b></div>
+<button class="btn">下一个 →</button>
+<div class="chips"><span style="background:#1D4ED8;color:#fff">#1D4ED8</span><span style="background:#E5383B;color:#fff">#E5383B</span><span style="background:#F5B700">#F5B700</span><span style="background:#F5F1E8">#F5F1E8</span><span style="background:#14213D;color:#fff">#14213D</span></div>
+<div class="spec">方格纸底＋三原色平涂，直角、无圆角，版面强调对齐与对称。画面最干净，<b>共享屏幕、视频压缩后最清楚</b>，也呼应「数学之美」。<br><b>风险</b>：最理性，亲切感最弱，要靠小动画和吉祥物补温度。</div></section>
+
+</div><script>
+document.querySelectorAll('.stage').forEach(st=>{
+ const c=st.querySelector('.cube');let rx=-24,ry=30,drag=false,x0,y0;
+ st.addEventListener('pointerdown',e=>{drag=true;x0=e.clientX;y0=e.clientY;c.style.animation='none';c.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`;st.setPointerCapture(e.pointerId);st.style.cursor='grabbing'});
+ st.addEventListener('pointermove',e=>{if(!drag)return;ry+=(e.clientX-x0)*.6;rx-=(e.clientY-y0)*.6;x0=e.clientX;y0=e.clientY;c.style.transform=`rotateX(${rx}deg) rotateY(${ry}deg)`});
+ st.addEventListener('pointerup',()=>{drag=false;st.style.cursor='grab'});
+});
+</script></body></html>
