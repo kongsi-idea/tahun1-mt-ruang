@@ -5,6 +5,9 @@ import { stage } from './core/stage3d.js';
 const app = document.getElementById('app');
 const MODS = {
   m1: () => import('./modules/m1.js'),
+  m2: () => import('./modules/m2.js'),
+  m3: () => import('./modules/m3.js'),
+  m4: () => import('./modules/m4.js'),
   m5: () => import('./modules/m5.js'),
 };
 let cur = null, token = 0, offMode = null;
@@ -72,9 +75,9 @@ function home() {
   h.innerHTML = `<div class="hero"><p class="hello"><span>一年级数学 · 7.0 空间</span> <span>选一个来玩吧</span></p><p class="mode-cap" id="modeCap"></p></div>
   <div class="cards">
     ${card('m1', 'big', 'M1 立体图形', '认识立体 · 数面边顶点')}
-    ${card('m2', 'big', 'M2 平面图形', '认识平面图形', null, true)}
-    ${card('m3', '', 'M3 模式排列', '找规律，猜一猜', null, true)}
-    ${card('m4', '', 'M4 创意图案', '拼图案，搭模型', null, true)}
+    ${card('m2', 'big', 'M2 平面图形', '认识平面图形')}
+    ${card('m3', '', 'M3 模式排列', '找规律，猜一猜')}
+    ${card('m4', '', 'M4 创意图案', '拼图案，搭模型')}
     ${card('m5', 'm5', 'M5 展开图', '11 种 · 能折吗？', '延伸')}
   </div>`;
   const cap = h.querySelector('#modeCap');

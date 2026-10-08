@@ -1,6 +1,6 @@
 import { stage, THREE } from '../core/stage3d.js';
 import { hlMats } from '../core/ink.js';
-import { mountOptions, feedback, idleFeedback, burst, shuffle, pick } from '../core/quiz.js';
+import { mountOptions, feedback, idleFeedback, burst, shuffle, pick, renderQuiz as rq2 } from '../core/quiz.js';
 import { buildShape, SHAPE_IDS, NAMES } from './shapes.js';
 import { OBJECTS } from './objects.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
@@ -161,18 +161,19 @@ function toolsHTML() {
 }
 
 function tabsHTML() {
-  return `<div class="tabs"><button class="btn small${S.tab === 'know' ? ' on' : ''}" data-a="tab-know">认识立体</button><button class="btn small${S.tab === 'life' ? ' on' : ''}" data-a="tab-life">生活中的立体</button></div>`;
+  return `<div class="tabs grid g2x"><button class="btn small${S.tab === 'know' ? ' on' : ''}" data-a="tab-know">认识立体</button><button class="btn small${S.tab === 'life' ? ' on' : ''}" data-a="tab-life">生活中的立体</button><button class="btn small${S.tab === 'chal' ? ' on' : ''}" data-a="tab-chal">小挑战</button></div>`;
 }
 const K = [['<kbd>空白键</kbd>', '揭晓／下一步'], ['<kbd>←</kbd><kbd>→</kbd>', '上一项／下一项'], ['<kbd>R</kbd>', '复位视角']];
 const KEYS = () => keysHTML(K);
 
 function render() {
   const practice = ctxRef.getMode() === 'practice';
-  host.classList.toggle('life-on', S.tab === 'life');
+  host.classList.toggle('life-on', S.tab === 'life' || S.tab === 'chal');
   syncMini(practice);
   nameTag();
   renderChips();
   if (S.tab === 'life') return renderLife(practice);
+  if (S.tab === 'chal') return renderChal(practice);
   if (practice) return renderQuiz();
   panel.innerHTML = tabsHTML() +
     `<div class="grp6"><button class="btn s4 yellow" data-a="name" style="grid-column:span 4">${S.name ? '隐藏名称' : '显示名称'}</button><button class="btn s2" data-a="clear" style="grid-column:span 2"${S.mode || S.name ? '' : ' disabled'}>清除</button></div>` +
@@ -192,13 +193,14 @@ function syncMini(practice) {
       stage.clear(); stage.cornerSegs = [];
       shape = buildShape(o.solid, { flip: !!o.flip });
       stage.content.add(shape.group); stage.setFootprint(...shape.foot);
+      shape.faces.forEach((f) => (f.base = f.mesh.material.color.clone()));
       S.miniKey = o.id;
       const h0 = home(); stage.fly = null; stage.controls.enabled = true; stage.place(h0.target, h0.sph);
     }
     stage.paused = false;
   } else {
-    if (S.tab === 'life' && (S.miniKey || shape)) { stage.clear(); stage.cornerSegs = []; shape = null; S.miniKey = null; }
-    stage.paused = S.tab === 'life';
+    if (S.tab !== 'know' && (S.miniKey || shape)) { stage.clear(); stage.cornerSegs = []; shape = null; S.miniKey = null; }
+    stage.paused = S.tab !== 'know' || !gl;
   }
 }
 
@@ -271,6 +273,36 @@ function renderQuizPanel(life) {
   }
 }
 
+// ———— 小挑战（7.3）：数一数这里有几个「像某种立体」的东西；答案由物品数据数出来 ————
+function newChal() {
+  const items = shuffle(OBJECTS).slice(0, 6 + Math.floor(Math.random() * 4));
+  const solids = [...new Set(items.map((o) => o.solid))], target = pick(solids);
+  const answer = items.filter((o) => o.solid === target).length;
+  const set = new Set([answer]); const cand = shuffle([...Array(8).keys()].filter((x) => x !== answer && x > 0 && Math.abs(x - answer) <= 3));
+  while (set.size < 3) set.add(cand.pop());
+  const arr = shuffle([...set]);
+  S.ch = { items, target, answer, shown: false, q: { title: `这里有几个像「${NAMES[target]}」的东西？`, labels: arr.map(String), correct: arr.indexOf(answer), cols: 3, goodMsg: `数一数，真的是 ${answer} 个。`, badMsg: `正确答案是 ${answer} 个，已经圈出来了。`, onDone: () => { S.ch.shown = true; paintChal(); } } };
+}
+export function chalVerified() { return !!S.ch && S.ch.verified; }
+function paintChal() {
+  let el = host.querySelector('.life');
+  if (!el) { el = document.createElement('div'); el.className = 'life'; (host.querySelector('.cv') || host).appendChild(el); }
+  const c = S.ch; let n = 0;
+  el.innerHTML = `<div class="chgrid">${c.items.map((o) => { const hit = c.shown && o.solid === c.target; if (hit) n++; return `<div class="chi${hit ? ' hit' : ''}" data-solid="${o.solid}" aria-label="${o.name}">${o.svg()}${hit ? `<b>${n}</b>` : ''}</div>`; }).join('')}</div>`;
+  c.verified = el.querySelectorAll(`[data-solid="${c.target}"]`).length === c.answer;
+}
+function renderChal(practice) {
+  if (!S.ch) newChal();
+  paintChal();
+  const c = S.ch;
+  if (!practice) {
+    panel.innerHTML = tabsHTML() + `<div class="readout"><div class="q">小挑战：这里有几个像「${NAMES[c.target]}」的东西？</div><div class="line">${c.shown ? `<b>答案：${c.answer} 个</b>` : '数一数，再按「揭晓」。'}</div></div><div class="grp6"><button class="btn s6 red" data-a="chreveal">${c.shown ? '再藏起来' : '揭晓'}</button><button class="btn s6 green" data-a="chnext">换一题 ▶</button></div>` + KEYS();
+  } else {
+    panel.innerHTML = tabsHTML() + '<div id="qbox" class="qbox"></div>';
+    rq2(panel.querySelector('#qbox'), c.q, { next: () => { S.ch = null; render(); }, burstHost: host });
+  }
+}
+
 // ———— 事件 ————
 function onPanel(e) {
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
@@ -282,6 +314,9 @@ function onPanel(e) {
   else if (a === 'clear') { S.name = false; clearMarks(); render(); }
   else if (a === 'name') { S.name = !S.name; render(); }
   else if (a === 'tab-know') { S.tab = 'know'; S.q = null; S.miniKey = null; host.classList.remove('reveal'); stage.paused = !gl; loadShape(S.idx); if (gl) { stage.fly = null; stage.controls.enabled = true; const h0 = home(); stage.place(h0.target, h0.sph); } render(); }
+  else if (a === 'tab-chal') { clearMarks(); if (gl) { stage.clear(); stage.cornerSegs = []; } shape = null; S.miniKey = null; S.tab = 'chal'; S.q = null; S.ch = null; render(); }
+  else if (a === 'chreveal') { S.ch.shown = !S.ch.shown; render(); }
+  else if (a === 'chnext') { S.ch = null; render(); }
   else if (a === 'tab-life') { clearMarks(); if (gl) { stage.clear(); stage.cornerSegs = []; } shape = null; S.miniKey = null; S.tab = 'life'; S.q = null; S.lifeShown = false; render(); }
   else if (a === 'reveal') { S.lifeShown = !S.lifeShown; render(); }
   else if (a === 'lnext') lifeMove(1);
@@ -298,6 +333,7 @@ function onKey(e) {
     if (e.type === 'keyup') return;
     if (!teach) { if (S.q?.done) panel.querySelector('[data-a="qnext"]')?.click(); return; }
     if (S.tab === 'life') { if (!S.lifeShown) { S.lifeShown = true; render(); } else lifeMove(1); return; }
+    if (S.tab === 'chal') { if (!S.ch.shown) S.ch.shown = true; else S.ch = null; render(); return; }
     if (S.mode) step(); else if (!S.name) { S.name = true; render(); } else switchShape((S.idx + 1) % 6);
     return;
   }
@@ -327,9 +363,9 @@ export default {
     loadShape(0);
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { S.q = null; S.name = false; S.lifeShown = false; clearMarks(); render(); });
+    offMode = ctx.onMode(() => { S.q = null; S.name = false; S.lifeShown = false; S.ch = null; clearMarks(); render(); });
     render();
-    window.__m1 = { S: () => S, shape: () => shape, switchShape, setMode, step, all, total, describe };
+    window.__m1 = { chalVerified, S: () => S, shape: () => shape, switchShape, setMode, step, all, total, describe };
   },
   unmount() {
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);

@@ -41,3 +41,50 @@ export function burst(host) {
     host.appendChild(s); setTimeout(() => s.remove(), 1200);
   }
 }
+
+// ———— 通用题目面板（M2–M5 新模块用）————
+// q: { title(html), labels[], correct(index) 或 multi:true + correctSet[](index),
+//      cols, done, picked, ok, goodMsg, badMsg, onDone(ok) }
+// opts: { next(), burstHost, extra(html) }
+export function renderQuiz(box, q, opts = {}) {
+  const multi = !!q.multi;
+  box.innerHTML = `<div class="quiz-q">${q.title}</div><div class="opts" id="qopts"></div><div class="fb" id="qfb"></div>${opts.extra || ''}` +
+    (multi && !q.done ? '<button type="button" class="btn s6 blue" id="qok" disabled>确定</button>' : '') +
+    `<button type="button" class="btn s6 green" id="qnext" style="${q.done ? '' : 'visibility:hidden'}">下一题 ▶</button>`;
+  const ob = box.querySelector('#qopts'), fb = box.querySelector('#qfb');
+  ob.className = 'opts' + (q.cols === 2 ? ' c2' : '') + (q.cols === 4 ? ' c4' : '');
+  ob.style.gridTemplateColumns = q.cols === 3 ? 'repeat(3,1fr)' : q.cols === 4 ? 'repeat(2,1fr)' : '';
+  const sel = new Set(q.picked || []);
+  const set = new Set(multi ? q.correctSet : [q.correct]);
+  const btns = q.labels.map((t, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'btn opt yellow'; b.innerHTML = esc(t); b.dataset.i = i;
+    ob.appendChild(b); return b;
+  });
+  const paint = () => btns.forEach((b, i) => {
+    b.classList.remove('right', 'wrong', 'hint', 'sel');
+    if (q.done) {
+      b.disabled = true;
+      if (set.has(i)) b.classList.add('right'); if (set.has(i) && !sel.has(i)) b.classList.add('hint');
+      if (sel.has(i) && !set.has(i)) b.classList.add('wrong');
+    } else if (sel.has(i)) b.classList.add('sel');
+  });
+  const finish = () => {
+    q.picked = [...sel]; q.done = true;
+    q.ok = multi ? (sel.size === set.size && [...sel].every((i) => set.has(i))) : sel.has(q.correct);
+    if (q.ok && opts.burstHost) burst(opts.burstHost);
+    q.onDone?.(q.ok);
+    renderQuiz(box, q, opts);
+  };
+  btns.forEach((b, i) => (b.onclick = () => {
+    if (q.done) return;
+    if (multi) { sel.has(i) ? sel.delete(i) : sel.add(i); paint(); box.querySelector('#qok').disabled = sel.size === 0; }
+    else { sel.clear(); sel.add(i); finish(); }
+  }));
+  if (multi && !q.done) box.querySelector('#qok').onclick = finish;
+  paint();
+  if (q.done) {
+    fb.className = 'fb ' + (q.ok ? 'good' : 'try');
+    fb.innerHTML = (q.ok ? '<span class="em">答对了！好棒！</span>' + esc(q.goodMsg || '') : '<span class="em">没关系，再看一看</span>' + esc(q.badMsg || ''));
+  } else idleFeedback(fb, q.hint || (multi ? '可以选好几个，选好了按「确定」。' : '看一看，选一个答案。'));
+  box.querySelector('#qnext').onclick = () => opts.next?.();
+}

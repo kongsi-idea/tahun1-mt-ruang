@@ -2,7 +2,8 @@ import { stage, THREE, ease, dur, reducedMotion } from '../core/stage3d.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { COLORS, INK, inkMat, faceMaterial } from '../core/ink.js';
-import { mountOptions, idleFeedback, burst, shuffle, pick } from '../core/quiz.js';
+import { mountOptions, idleFeedback, burst, shuffle, pick, renderQuiz } from '../core/quiz.js';
+import { COLOR_NAMES } from '../core/flat.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 import { NETS, key, analyze, pickRoot, buildPools, landscape, normalize } from './netlogic.js';
 
@@ -206,7 +207,43 @@ function miniNet(g) {
 }
 
 // ———— 画面 ————
-const tabs = () => `<div class="tabs"><button class="btn small${S.tab === 'explore' ? ' on' : ''}" data-a="tab-explore">看展开图</button><button class="btn small${S.tab === 'game' ? ' on' : ''}" data-a="tab-game">能折吗？</button></div>`;
+const tabs = () => `<div class="tabs grid g3"><button class="btn small${S.tab === 'explore' ? ' on' : ''}" data-a="tab-explore">看展开图</button><button class="btn small${S.tab === 'game' ? ' on' : ''}" data-a="tab-game">能折吗？</button><button class="btn small${S.tab === 'chal' ? ' on' : ''}" data-a="tab-chal">小挑战</button></div>`;
+
+// ———— 小挑战：某个颜色的面，折起来以后对面是什么颜色？（答案由「滚动法」算出，再用折叠后面中心的位置核对）————
+const OPP = { 0: 1, 1: 0, 2: 3, 3: 2, 4: 5, 5: 4 };
+function newChal() {
+  clearTimeout(S.t);
+  const cells = landscape(pick(pools.valid)), a = analyze(cells, pickRoot(cells));
+  build(cells, { colors: COLORS, flat: true });
+  const v = openView(); stage.place(v.target, v.sph); net.open = true;
+  const keys = cells.map((c) => key(...c)), target = pick(keys);
+  const oppKey = keys.find((k) => a.faceOf.get(k) === OPP[a.faceOf.get(target)]);
+  const hex = (k) => '#' + net.byKey.get(k).base.getHexString().toUpperCase();
+  // 核对：折好之后，对面两个面的中心恰好在立方体中心的两侧
+  const cs = foldedCenters(), ct = cs.find((x) => x.key === target).c;
+  const opp2 = cs.find((x) => x.c.distanceTo(ct.clone().negate()) < 0.05)?.key;
+  const ans = hex(oppKey), tgt = hex(target);
+  const others = shuffle(COLORS.filter((c) => c.toUpperCase() !== ans && c.toUpperCase() !== tgt)).slice(0, 2);
+  const opts = shuffle([ans, ...others]);
+  const nm = (h) => COLOR_NAMES[Object.keys(COLOR_NAMES).find((k) => k.toUpperCase() === h.toUpperCase())];
+  S.ch = { cells, target, oppKey, answer: ans, targetColor: tgt, verified: opp2 === oppKey, shown: false, nm,
+    q: { title: `${nm(tgt)}的面，折起来以后，它的对面是什么颜色？`, labels: opts.map(nm), correct: opts.indexOf(ans), cols: 3, goodMsg: `对面是${nm(ans)}。`, badMsg: `正确答案是${nm(ans)}。看，折起来就知道了。`, onDone: () => { chalReveal(); } } };
+}
+function chalReveal() {
+  if (!S.ch || S.ch.folded) return; S.ch.folded = true; S.ch.shown = true;
+  setOpen(false);
+  [S.ch.target, S.ch.oppKey].forEach((k) => { const f = net.byKey.get(k); f.m.material.emissive.copy(f.base).multiplyScalar(0.35); });
+}
+function renderChal(practice) {
+  if (!S.ch) newChal();
+  const c = S.ch;
+  if (!practice) {
+    panel.innerHTML = tabs() + `<div class="readout"><div class="q">${c.q.title}</div><div class="line">${c.shown ? `<b>答案：${c.nm(c.answer)}</b>` : '想一想，再按「折折看」。'}</div></div><div class="grp6"><button class="btn s6 red" data-a="chfold">${c.folded ? '展开' : '折折看'}</button><button class="btn s6 green" data-a="chnext">换一题 ▶</button></div>` + KEYS_G();
+  } else {
+    panel.innerHTML = tabs() + '<div id="qbox" class="qbox"></div>';
+    renderQuiz(panel.querySelector('#qbox'), c.q, { next: () => { clearCallout(); S.ch = null; render(); }, burstHost: host });
+  }
+}
 const KEYS_E = () => keysHTML([['<kbd>空白键</kbd>', '展开／合起'], ['<kbd>←</kbd><kbd>→</kbd>', '换一种'], ['<kbd>R</kbd>', '复位视角']]);
 const KEYS_G = () => keysHTML([['<kbd>空白键</kbd>', '折折看／下一题'], ['<kbd>R</kbd>', '复位视角']]);
 
@@ -220,6 +257,7 @@ function render() {
       <div class="sound-note">点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。</div>` + KEYS_E();
     return;
   }
+  if (S.tab === 'chal') return renderChal(practice);
   const g = S.g;
   if (!practice) {
     const res = g.done ? (g.valid ? '<b>能折成正方体！</b>六个面刚刚好。' : '<b>不能折。</b>红色的两个面撞在一起了，正方体还缺一个面。') : '先猜一猜，再按「折折看」。';
@@ -249,6 +287,9 @@ function onPanel(e) {
   if (a === 'keys') { toggleKeys(); render(); }
   else if (a === 'tab-explore') { S.tab = 'explore'; clearCallout(); showNet(S.i, false); }
   else if (a === 'tab-game') { S.tab = 'game'; newGame(); }
+  else if (a === 'tab-chal') { S.tab = 'chal'; S.ch = null; render(); }
+  else if (a === 'chfold') { if (S.ch.folded) { S.ch.folded = false; S.ch.shown = false; setOpen(true); net.faces.forEach((f) => f.m.material.emissive.setScalar(0)); render(); } else { chalReveal(); render(); } }
+  else if (a === 'chnext') { S.ch = null; render(); }
   else if (a === 'fold') { if (net) { setOpen(!net.open); render(); } }
   else if (a === 'pick') pickNet(+b.dataset.i);
   else if (a === 'gfold') (S.g.folded ? unfoldGame() : foldGame());
@@ -260,6 +301,7 @@ function onKey(e) {
   if (e.code === 'Space') {
     e.preventDefault(); if (e.type === 'keyup') return;
     if (S.tab === 'explore') { if (net) { setOpen(!net.open); render(); } }
+    else if (S.tab === 'chal') { if (!teach) return; if (!S.ch.folded) { chalReveal(); render(); } else { S.ch = null; render(); } }
     else if (teach) { if (!S.g.folded) foldGame(); else { clearCallout(); newGame(); } }
     else if (S.g.answered) { clearCallout(); newGame(); }
     return;
@@ -283,9 +325,9 @@ export default {
     if (gl) showNet(0, false);
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { if (S.tab === 'game') newGame(); else render(); });
+    offMode = ctx.onMode(() => { S.ch = null; if (S.tab === 'game') newGame(); else render(); });
     render();
-    window.__m5 = { S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet };
+    window.__m5 = { newChal, S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet };
   },
   unmount() {
     clearTimeout(S.t);

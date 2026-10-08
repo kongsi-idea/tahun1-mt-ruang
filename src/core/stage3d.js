@@ -87,7 +87,7 @@ class Stage3D {
     this._buildBar();
     this.hooks = onFrame ? [onFrame] : [];
     this.home = home; this.fly = null;
-    this.controls.enabled = true; this.controls.autoRotate = false;
+    this.controls.enabled = true; this.controls.autoRotate = false; this.controls.maxDistance = 14; this.controls.minDistance = 3.5;
     this.cornerSegs = [];
     this.mounted = true; this.paused = false;
     this._ro = new ResizeObserver(() => this.resize());

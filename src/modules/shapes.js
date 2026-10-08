@@ -4,6 +4,17 @@ import { COLORS, faceMaterial, lineFrom, dynamicLine, setDynamic, circlePts, hlM
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const SEG = 96; // 曲面分段（≥64）
+// 相机位置换算到立体自己的坐标系（立体被转动、缩放、倒放时，剪影线仍然正确）
+const _cl = new THREE.Vector3();
+function camLocal(cam, group) { group.updateWorldMatrix(true, false); return group.worldToLocal(_cl.copy(cam.position)).clone(); }
+// 立体的边线（世界座标），给顶点尖角补丁用
+export function worldSegs(shape) {
+  shape.group.updateWorldMatrix(true, false);
+  const m = shape.group.matrixWorld;
+  return shape.segs().map(([a, b]) => [a.clone().applyMatrix4(m), b.clone().applyMatrix4(m)]);
+}
+// 单色（M3、M4 用）
+export function setMono(shape, color) { shape.faces.forEach((f) => f.mesh.material.color.set(color)); }
 
 export const SHAPE_IDS = ['cube', 'cuboid', 'pyramid', 'cone', 'cylinder', 'sphere'];
 export const NAMES = { cube: '正方体', cuboid: '长方体', pyramid: '正方棱锥体', cone: '圆锥体', cylinder: '圆柱体', sphere: '球体' };
@@ -39,7 +50,7 @@ function polyhedron(id, verts, faces, notes, colors) {
     const r = polyFaceMesh(f.map((k) => verts[k]), colors[i], center);
     group.add(r.mesh); shape.occluders.push(r.mesh);
     const anc = r.centroid.clone().addScaledVector(r.normal, 0.03);
-    shape.faces.push({ type: '平面', note: notes[i], mesh: r.mesh, anchor: () => anc });
+    shape.faces.push({ type: '平面', note: notes[i], mesh: r.mesh, anchor: () => anc, flat: { pts: f.map((k) => verts[k].clone()), normal: r.normal.clone(), center: r.centroid.clone() } });
   });
   const seen = new Set();
   faces.forEach((f) => f.forEach((a, i) => {
@@ -89,9 +100,9 @@ function cylinder() {
   const shape = { id: 'cylinder', name: NAMES.cylinder, group, verts: [], occluders: [lat, top, bot] };
   const tA = V(0, h + 0.03, 0), bA = V(0, -0.03, 0);
   shape.faces = [
-    { type: '平面', note: '圆形', mesh: top, anchor: () => tA },
+    { type: '平面', note: '圆形', mesh: top, anchor: () => tA, flat: { circle: r, center: V(0, h, 0), normal: V(0, 1, 0) } },
     { type: '曲面', note: '', mesh: lat, anchor: (cam) => { const a = frontAngle(cam); return V(Math.cos(a) * (r + 0.03), h / 2, Math.sin(a) * (r + 0.03)); } },
-    { type: '平面', note: '圆形', mesh: bot, anchor: () => bA },
+    { type: '平面', note: '圆形', mesh: bot, anchor: () => bA, flat: { circle: r, center: V(0, 0, 0), normal: V(0, -1, 0) } },
   ];
   const ptsT = circlePts(r, h, SEG), ptsB = circlePts(r, 0, SEG);
   group.add(lineFrom(ptsT), lineFrom(ptsB));
@@ -102,7 +113,7 @@ function cylinder() {
   const sil = [dynamicLine(2), dynamicLine(2)]; sil.forEach((s) => group.add(s));
   shape.segs = () => [];
   shape.update = (cam) => {
-    const dx = cam.position.x, dz = cam.position.z, D = Math.hypot(dx, dz);
+    const cl = camLocal(cam, group), dx = cl.x, dz = cl.z, D = Math.hypot(dx, dz);
     const a = Math.atan2(dz, dx), phi = Math.acos(Math.min(r / Math.max(D, r + 1e-4), 1));
     [a + phi, a - phi].forEach((t, i) => setDynamic(sil[i], [V(r * Math.cos(t), 0, r * Math.sin(t)), V(r * Math.cos(t), h, r * Math.sin(t))]));
   };
@@ -121,7 +132,7 @@ function cone(flip = false) {
   const bA = V(0, yb + (flip ? 0.03 : -0.03), 0);
   shape.faces = [
     { type: '曲面', note: '', mesh: lat, anchor: (cam) => { const a = frontAngle(cam), f = 0.38, rr = r * (1 - f) + 0.04; return V(Math.cos(a) * rr, yb + (ya - yb) * f, Math.sin(a) * rr); } },
-    { type: '平面', note: '圆形', mesh: bot, anchor: () => bA },
+    { type: '平面', note: '圆形', mesh: bot, anchor: () => bA, flat: { circle: r, center: V(0, yb, 0), normal: V(0, flip ? 1 : -1, 0) } },
   ];
   const ptsB = circlePts(r, yb, SEG);
   group.add(lineFrom(ptsB));
@@ -130,7 +141,7 @@ function cone(flip = false) {
   let cur = [];
   shape.segs = () => cur;
   shape.update = (cam) => {
-    const c = cam.position.clone(); if (Math.abs(c.y - ya) < 1e-3) c.y += 2e-3;
+    const c = camLocal(cam, group); if (Math.abs(c.y - ya) < 1e-3) c.y += 2e-3;
     const s = (yb - ya) / (ya - c.y);
     const P = apex.clone().addScaledVector(apex.clone().sub(c), s);
     const D = Math.hypot(P.x, P.z);
@@ -157,7 +168,7 @@ function sphere() {
   const O = V(0, cy, 0);
   shape.segs = () => [];
   shape.update = (cam) => {
-    const n = cam.position.clone().sub(O), d = n.length(); n.normalize();
+    const n = camLocal(cam, group).sub(O), d = n.length(); n.normalize();
     const u = Math.abs(n.y) < 0.99 ? V(0, 1, 0).cross(n).normalize() : V(1, 0, 0), v = n.clone().cross(u);
     const C = O.clone().addScaledVector(n, (R * R) / d), rho = (R * Math.sqrt(d * d - R * R)) / d;
     const pts = [];
