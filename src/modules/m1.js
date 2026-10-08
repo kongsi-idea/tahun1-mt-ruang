@@ -139,7 +139,7 @@ function readout() {
   if (!k) return `<div class="readout"><div class="line">${S.name ? `这是<b>${shape.name}</b>。` : '先猜一猜：这是什么立体？'}<br>想数一数，就按「面」「边」「顶点」。</div></div>`;
   const T = total(k), n = S.n;
   let line;
-  if (T === 0) line = `<b>没有${KIND[k].zh}</b>。摸一摸，${k === 'vert' ? '找不到尖尖的角' : '找不到一条边'}。`;
+  if (T === 0) line = `<b>没有${KIND[k].zh}</b>。摸一摸，${k === 'vert' ? '找不到尖尖的顶点' : '找不到一条边'}。`;
   else if (n === 0) line = `点「数下一个」或按空白键，一个一个数。`;
   else if (n < T) {
     if (k === 'face') { const f = shape.faces[n - 1]; line = `第 ${n} 个面：<b>${f.type}</b>${f.note ? '（' + f.note + '）' : ''}`; }

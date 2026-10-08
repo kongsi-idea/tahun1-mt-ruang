@@ -281,7 +281,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 @media (max-width:860px){.stage.keep3d{height:min(112vw,60dvh)}}
 .tabs.grid.g3{grid-template-columns:repeat(3,1fr)}
 .tabs.grid.g3 .btn{padding:6px 2px}
-.mk.angle .n{background:var(--purple);border-radius:21px}
+.mk.fvert .n{background:var(--red);border-radius:21px}
 .flat .sq svg.finger{width:84px;height:84px;position:absolute;left:50%;top:40%}
 .flat .sq .callout{position:absolute;left:14px;top:14px}
 

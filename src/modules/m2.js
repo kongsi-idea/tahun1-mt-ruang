@@ -1,20 +1,20 @@
-// M2 平面图形（7.2）：认识、边／角／曲线、藏在立体里的平面（盖印章，复用 M1 的 3D 立体）、小挑战（7.3）
+// M2 平面图形（7.2）：认识、边／顶点／曲线、藏在立体里的平面（盖印章，复用 M1 的 3D 立体）、小挑战（7.3）
 import { stage, THREE, ease, dur, reducedMotion } from '../core/stage3d.js';
 import { INK, lineFrom, circlePts } from '../core/ink.js';
-import { FLAT, FLAT_IDS, countOf, hasAngle, flatSVG, flatIcon, PAL } from '../core/flat.js';
+import { FLAT, FLAT_IDS, countOf, hasVertex, flatSVG, flatIcon, PAL } from '../core/flat.js';
 import { renderQuiz, shuffle, pick } from '../core/quiz.js';
 import { buildShape, SHAPE_IDS, NAMES, worldSegs } from './shapes.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 
 const rad = THREE.MathUtils.degToRad;
-const KIND = { edge: { zh: '直线边', unit: '条', color: 'line' }, angle: { zh: '角', unit: '个' }, curve: { zh: '曲线', unit: '条', color: 'curve' } };
+const KIND = { edge: { zh: '直线边', unit: '条', color: 'line' }, vert: { zh: '顶点', unit: '个' }, curve: { zh: '曲线', unit: '条', color: 'curve' } };
 const FINGER = '<svg class="finger" viewBox="0 0 84 84"><rect x="32" y="4" width="22" height="48" rx="11" fill="#fff" stroke="#3B2A1A" stroke-width="5"/><rect x="14" y="40" width="58" height="40" rx="16" fill="#fff" stroke="#3B2A1A" stroke-width="5"/></svg>';
 const K = [['<kbd>空白键</kbd>', '揭晓／下一步'], ['<kbd>←</kbd><kbd>→</kbd>', '上一项／下一项'], ['<kbd>R</kbd>', '复位视角']];
 
 let S, host, panel, chipsEl, flatEl, sqEl, gl, ctxRef, offMode, ro, stamp, imprint;
 
 // ———— 数据：数量表（由数据得出）————
-const total = (id, k) => { const c = countOf(id); return k === 'edge' ? c.lines : k === 'angle' ? c.angles : c.curves; };
+const total = (id, k) => { const c = countOf(id); return k === 'edge' ? c.lines : k === 'vert' ? c.verts : c.curves; };
 export function m2Table() {
   return FLAT_IDS.map((id) => ({ id, name: FLAT[id].name, ...countOf(id) }));
 }
@@ -22,15 +22,6 @@ export function m2Table() {
 // ———— 平面画面 ————
 const C0 = 200, KK = 100; // 画面中心、图形缩放（viewBox 0..400）
 function verts(id) { return FLAT[id].poly.map(([x, y]) => [C0 + x * KK, C0 + y * KK]); }
-
-function arcPath(P, V, N, r) {
-  const a = [P[0] - V[0], P[1] - V[1]], b = [N[0] - V[0], N[1] - V[1]];
-  const la = Math.hypot(...a), lb = Math.hypot(...b);
-  const p1 = [V[0] + (a[0] / la) * r, V[1] + (a[1] / la) * r], p2 = [V[0] + (b[0] / lb) * r, V[1] + (b[1] / lb) * r];
-  const sweep = a[0] * b[1] - a[1] * b[0] > 0 ? 1 : 0;
-  const bis = [a[0] / la + b[0] / lb, a[1] / la + b[1] / lb], bl = Math.hypot(...bis);
-  return { d: `M${p1[0]},${p1[1]} A${r},${r} 0 0 ${sweep} ${p2[0]},${p2[1]}`, dir: [bis[0] / bl, bis[1] / bl] };
-}
 
 function flatMarks(id, k, n, cur) {
   let svg = '', badges = '';
@@ -44,13 +35,12 @@ function flatMarks(id, k, n, cur) {
       sq((A[0] + B[0]) / 2 + (mx / ml) * 46, (A[1] + B[1]) / 2 + (my / ml) * 46, `edge line${isCur ? ' cur' : ''}`, `<span class="n">${i + 1}<small>直线</small></span>`);
     }
   }
-  if (k === 'angle' && FLAT[id].poly) {
+  if (k === 'vert' && FLAT[id].poly) {
     const V = verts(id);
     for (let i = 0; i < n; i++) {
-      const P = V[(i + V.length - 1) % V.length], Vt = V[i], N = V[(i + 1) % V.length], isCur = i === cur;
-      const arc = arcPath(P, Vt, N, 38);
-      svg += `<path d="${arc.d}" fill="none" stroke="${INK}" stroke-width="${isCur ? 17 : 15}" stroke-linecap="butt"/><path d="${arc.d}" fill="none" stroke="${isCur ? '#FFC93C' : '#8E6BD8'}" stroke-width="${isCur ? 10 : 8}" stroke-linecap="butt"/>`;
-      sq(Vt[0] + arc.dir[0] * 78, Vt[1] + arc.dir[1] * 78, `angle${isCur ? ' cur' : ''}`, `<span class="n">${i + 1}</span>`);
+      const Vt = V[i], isCur = i === cur, dx = Vt[0] - C0, dy = Vt[1] - C0, dl = Math.hypot(dx, dy) || 1;
+      svg += `<circle cx="${Vt[0]}" cy="${Vt[1]}" r="${isCur ? 25 : 22}" fill="${isCur ? 'rgba(255,201,60,.55)' : 'rgba(255,255,255,.2)'}" stroke="${isCur ? INK : '#F2564B'}" stroke-width="${isCur ? 9 : 8}"/>`;
+      sq(Vt[0] + (dx / dl) * 62, Vt[1] + (dy / dl) * 62, `fvert${isCur ? ' cur' : ''}`, `<span class="n">${i + 1}</span>`);
     }
   }
   if (k === 'curve' && id === 'circle' && n >= 1) {
@@ -85,7 +75,7 @@ const CH_Q = [
   { id: 'tri', text: '三角形', test: (s) => s === 'tri' },
   { id: 'circle', text: '圆形', test: (s) => s === 'circle' },
   { id: 'square', text: '正方形', test: (s) => s === 'square' },
-  { id: 'angled', text: '有「角」的图形', test: (s) => hasAngle(s) },
+  { id: 'angled', text: '有顶点的图形', test: (s) => hasVertex(s) },
 ];
 export function makeChallenge() {
   const cells = shuffle([...Array(9).keys()]).slice(0, 6 + Math.floor(Math.random() * 4));
@@ -233,7 +223,7 @@ function toolsHTML() {
   const k = S.kind;
   return `<div class="grp6">
     <button class="btn s2 red${k === 'edge' ? ' on' : ''}" data-a="kind-edge">直线边</button>
-    <button class="btn s2 purple${k === 'angle' ? ' on' : ''}" data-a="kind-angle">角</button>
+    <button class="btn s2 purple${k === 'vert' ? ' on' : ''}" data-a="kind-vert">顶点</button>
     <button class="btn s2 blue${k === 'curve' ? ' on' : ''}" data-a="kind-curve">曲线</button>
     <button class="btn s4 green" data-a="step"${k ? '' : ' disabled'}>数下一个</button>
     <button class="btn s2 orange" data-a="all"${k ? '' : ' disabled'}>全部</button></div>`;
@@ -245,10 +235,10 @@ function describe(id, k) {
 }
 function readout() {
   const id = FLAT_IDS[S.idx], k = S.kind;
-  if (!k) return `<div class="readout"><div class="line">${S.name ? `这是<b>${FLAT[id].name}</b>。` : '先猜一猜：这是什么图形？'}<br>想数一数，就按「直线边」「角」「曲线」。</div></div>`;
+  if (!k) return `<div class="readout"><div class="line">${S.name ? `这是<b>${FLAT[id].name}</b>。` : '先猜一猜：这是什么图形？'}<br>想数一数，就按「直线边」「顶点」「曲线」。</div></div>`;
   const T = total(id, k);
   let line;
-  if (T === 0) line = `<b>${describe(id, k)}</b>。` + (k === 'curve' ? '边都是直直的。' : k === 'angle' ? '摸一摸，圆圆的，没有尖尖的角。' : '圆的边是弯弯的。');
+  if (T === 0) line = `<b>${describe(id, k)}</b>。` + (k === 'curve' ? '边都是直直的。' : k === 'vert' ? '摸一摸，圆圆的，找不到尖尖的顶点。' : '圆的边是弯弯的。');
   else if (S.n === 0) line = '点「数下一个」或按空白键，一个一个数。';
   else if (S.n < T) line = `第 ${S.n} ${KIND[k].unit}${KIND[k].zh}`;
   else line = `<b>${describe(id, k)}</b>`;
@@ -261,7 +251,7 @@ function newKnowQ() {
     const ids = shuffle([id, ...shuffle(FLAT_IDS.filter((x) => x !== id)).slice(0, 2)]);
     S.q = { type: 'name', title: '这是什么图形？', labels: ids.map((x) => FLAT[x].name), correct: ids.indexOf(id), cols: 1, goodMsg: `是「${FLAT[id].name}」。`, badMsg: `正确答案是「${FLAT[id].name}」。`, onDone: () => { S.name = true; renderFlat(); nameTag(); } };
   } else {
-    const k = pick(['edge', 'angle', 'curve']), c = total(id, k);
+    const k = pick(['edge', 'vert', 'curve']), c = total(id, k);
     const set = new Set([c]); const cand = shuffle([...Array(7).keys()].filter((x) => x !== c));
     while (set.size < 3) set.add(cand.pop());
     const nums = shuffle([...set]);
