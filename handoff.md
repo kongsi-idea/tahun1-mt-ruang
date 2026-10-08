@@ -33,4 +33,4 @@
 - **打包大小**：three 打包后约 600KB，`vite.config.js` 把警告上限调到 900KB。
 
 ## 🕐 最后更新
-2026-10-08 22:10 · Claude Opus 5.5 @ yquanloo 的 Mac · Git：待推
+2026-10-08 22:10 · Claude Opus 5.5 @ yquanloo 的 Mac · Git：✅ 已推
