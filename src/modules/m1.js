@@ -350,7 +350,7 @@ function onKey(e) {
 }
 
 export default {
-  title: 'M1 立体图形',
+  title: '立体图形',
   mount(body, ctx) {
     ctxRef = ctx; markers = [];
     S = { tab: 'know', miniKey: null, idx: 0, name: false, mode: null, n: 0, cur: -1, zero: false, life: 0, lifeShown: false, q: null };

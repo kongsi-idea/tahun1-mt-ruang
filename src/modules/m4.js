@@ -376,7 +376,7 @@ function onKey(e) {
 }
 
 export default {
-  title: 'M4 创意图案',
+  title: '创意图案',
   mount(body, ctx) {
     ctxRef = ctx; items = []; objs = []; drag = null; down = null;
     S = { tab: 'plane', color: PAL[0], color3: '#FFC93C', sel: null, selO: null, mirror: false, snap: true, q: null, note: '', free: undefined, quiz: false, shown: false, ch: null };

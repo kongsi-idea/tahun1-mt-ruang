@@ -73,14 +73,14 @@ function home() {
   const h = document.createElement('div'); h.className = 'home';
   const card = (id, cls, t, d, badge, soon) => soon
     ? `<button type="button" class="card ${cls}" data-soon="${t}">${ICON[id]}<span class="badge">即将推出</span><span class="t">${t}</span><span class="d">${d}</span></button>`
-    : `<a class="card ${cls}" href="#/${id}" data-id="${id}">${ICON[id]}${badge ? `<span class="badge ext">${badge}</span>` : ''}<span class="t">${t}</span><span class="d">${d}</span></a>`;
+    : `<a class="card ${cls}" href="#/${id}" data-id="${id}">${ICON[id]}${badge ? `<span class="badge ext${badge === '小乐趣' ? ' fun' : ''}">${badge}</span>` : ''}<span class="t">${t}</span><span class="d">${d}</span></a>`;
   h.innerHTML = `<div class="hero"><p class="hello"><span>一年级数学 · 7.0 空间</span> <span>选一个来玩吧</span></p><p class="mode-cap" id="modeCap"></p></div>
   <div class="cards">
-    ${card('m1', 'big', 'M1 立体图形', '认识立体 · 数面边顶点')}
-    ${card('m2', 'big', 'M2 平面图形', '认识平面图形')}
-    ${card('m3', '', 'M3 模式排列', '找规律，猜一猜')}
-    ${card('m4', '', 'M4 创意图案', '拼图案，搭模型')}
-    ${card('m5', 'm5', 'M5 展开图', '11 种 · 能折吗？', '延伸')}
+    ${card('m1', 'big', '立体图形', '认识立体 · 数面边顶点')}
+    ${card('m2', 'big', '平面图形', '认识图形 · 数边顶点')}
+    ${card('m3', '', '模式排列', '找规律，猜一猜')}
+    ${card('m4', '', '创意图案', '拼图案，搭模型')}
+    ${card('m5', '', '展开图', '6 种立体怎么摊开', '延伸')}
     ${card('stamp', '', '盖印章', '压一压，印出形状', '小乐趣')}
   </div>`;
   const cap = h.querySelector('#modeCap');

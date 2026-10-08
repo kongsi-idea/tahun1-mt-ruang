@@ -312,8 +312,8 @@ function onKey(e) {
 }
 
 export default {
-  title: 'M5 展开图',
-  ext: true,
+  title: '展开图',
+  badge: '延伸',
   mount(body, ctx) {
     ctxRef = ctx;
     S = { tab: 'explore', i: 0, g: null, t: 0 };

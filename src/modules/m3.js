@@ -367,7 +367,7 @@ function onKey(e) {
 }
 
 export default {
-  title: 'M3 模式排列',
+  title: '模式排列',
   mount(body, ctx) {
     ctxRef = ctx;
     S = { tab: 'plane', level: 1, q: null, revealed: false, why: false, ch: null, build: { kind: 'plane', items: [], hideLast: false, shape: 'square', color: PAL[0], size: 1, dir: 0 } };
