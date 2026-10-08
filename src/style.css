@@ -74,6 +74,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .readout .line{font-size:22px;line-height:1.35}
 .readout .q{font-size:26px;line-height:1.35}
 .keys{font-size:18px;line-height:1.5;opacity:.85;margin-top:auto}
+.keys .k{display:block;white-space:nowrap}
+.keys .kb{margin-top:8px;display:flex;flex-direction:column;gap:2px}
 .keys kbd{background:#fff;border:2px solid var(--ink);padding:0 6px;font:inherit;font-weight:800}
 .chips{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:nowrap}
 .chip{width:52px;height:52px;min-height:52px;padding:0;font-size:24px;border-width:4px}
@@ -124,9 +126,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .fb{border:4px solid var(--ink);padding:10px 12px;font-size:24px;line-height:1.4;background:#fff;min-height:84px}
 .fb.good{background:var(--green)}
 .fb.try{background:#FFE7A8}
-.fb .em{font-size:32px;font-weight:900;display:block}
+.fb{overflow:hidden;overflow-wrap:anywhere}
+.fb .em{font-size:30px;font-weight:900;display:block;transform-origin:left center}
 .fb.good .em{animation:bounce .6s ease-out}
-@keyframes bounce{0%{transform:scale(.6)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+@keyframes bounce{0%{transform:scale(.7)}60%{transform:scale(1.04)}100%{transform:scale(1)}}
 .star{position:absolute;pointer-events:none;width:34px;height:34px;z-index:5;animation:fly 1.1s ease-out forwards}
 @keyframes fly{from{transform:translate(0,0) scale(.4);opacity:1}to{transform:translate(var(--dx),var(--dy)) scale(1.1);opacity:0}}
 
@@ -202,3 +205,4 @@ button{font:inherit;color:inherit;cursor:pointer}
 @media (max-height:700px) and (min-width:861px){.sound-note{display:none}.picker{gap:6px}}
 .stage.life-on .gl-fallback{display:none}
 .stage:not(:has(.cv)) .life{position:absolute;inset:0;background:#FFFBF0}
+@media (max-width:520px){.fb .em{font-size:24px}.fb{font-size:22px}}

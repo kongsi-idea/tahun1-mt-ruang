@@ -3,6 +3,7 @@ import { hlMats } from '../core/ink.js';
 import { mountOptions, feedback, idleFeedback, burst, shuffle, pick } from '../core/quiz.js';
 import { buildShape, SHAPE_IDS, NAMES } from './shapes.js';
 import { OBJECTS } from './objects.js';
+import { keysHTML, toggleKeys } from '../core/keys.js';
 
 const rad = THREE.MathUtils.degToRad;
 const home = () => { const narrow = stage.size.w / stage.size.h < 1.25; return { target: new THREE.Vector3(0, narrow ? 0.4 : 0.85, 0), sph: new THREE.Spherical(narrow ? 6.6 : 7.6, rad(66), rad(35)) }; };
@@ -161,7 +162,8 @@ function toolsHTML() {
 function tabsHTML() {
   return `<div class="tabs"><button class="btn small${S.tab === 'know' ? ' on' : ''}" data-a="tab-know">认识立体</button><button class="btn small${S.tab === 'life' ? ' on' : ''}" data-a="tab-life">生活中的立体</button></div>`;
 }
-const KEYS = '<div class="keys"><kbd>空白键</kbd> 揭晓／下一步　<kbd>←</kbd><kbd>→</kbd> 上一项／下一项　<kbd>R</kbd> 复位视角</div>';
+const K = [['<kbd>空白键</kbd>', '揭晓／下一步'], ['<kbd>←</kbd><kbd>→</kbd>', '上一项／下一项'], ['<kbd>R</kbd>', '复位视角']];
+const KEYS = () => keysHTML(K);
 
 function render() {
   const practice = ctxRef.getMode() === 'practice';
@@ -173,7 +175,7 @@ function render() {
   if (practice) return renderQuiz();
   panel.innerHTML = tabsHTML() +
     `<div class="grp6"><button class="btn s4 yellow" data-a="name" style="grid-column:span 4">${S.name ? '隐藏名称' : '显示名称'}</button><button class="btn s2" data-a="clear" style="grid-column:span 2"${S.mode || S.name ? '' : ' disabled'}>清除</button></div>` +
-    toolsHTML() + readout() + KEYS;
+    toolsHTML() + readout() + KEYS();
 }
 
 // ———— 生活中的立体 ————
@@ -186,7 +188,7 @@ function renderLife(practice) {
   if (!practice) {
     panel.innerHTML = tabsHTML() + `<div class="readout"><div class="q">老师问：它像哪一种立体？</div></div>
     <div class="grp6"><button class="btn s6 red" data-a="reveal">${S.lifeShown ? '再藏起来' : '揭晓'}</button>
-    <button class="btn s3" data-a="lprev">◀ 上一件</button><button class="btn s3 green" data-a="lnext">下一件 ▶</button></div>` + KEYS;
+    <button class="btn s3" data-a="lprev">◀ 上一件</button><button class="btn s3 green" data-a="lnext">下一件 ▶</button></div>` + KEYS();
     return;
   }
   if (!S.q || S.q.type !== 'life' || S.q.idx !== S.life) newLifeQ();
@@ -250,7 +252,8 @@ function renderQuizPanel(life) {
 function onPanel(e) {
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
   const a = b.dataset.a;
-  if (a === 'face' || a === 'edge' || a === 'vert') setMode(a);
+  if (a === 'keys') { toggleKeys(); render(); }
+  else if (a === 'face' || a === 'edge' || a === 'vert') setMode(a);
   else if (a === 'step') step();
   else if (a === 'all') all();
   else if (a === 'clear') { S.name = false; clearMarks(); render(); }

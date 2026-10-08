@@ -1,8 +1,9 @@
-import { stage, THREE, ease, dur } from '../core/stage3d.js';
+import { stage, THREE, ease, dur, reducedMotion } from '../core/stage3d.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { COLORS, INK, inkMat, faceMaterial } from '../core/ink.js';
 import { mountOptions, idleFeedback, burst, shuffle, pick } from '../core/quiz.js';
+import { keysHTML, toggleKeys } from '../core/keys.js';
 import { NETS, key, analyze, pickRoot, buildPools, landscape, normalize } from './netlogic.js';
 
 const HALF = Math.PI / 2, DUR = 750, STEP = 230;
@@ -77,6 +78,10 @@ function frame(now) {
     h.cur = h.from + (h.to - h.from) * ease(t);
     h.pv.rotation[h.axis] = h.sign * h.cur;
   }
+  if (net.shake && !reducedMotion()) {
+    const t = (now - net.shake.t0) / 600, k = t < 0 || t > 1 ? 0 : Math.sin(t * Math.PI * 6) * (1 - t) * 0.07;
+    net.shake.faces.forEach((f, i) => { const x = i === 0 ? k : -k; f.m.position.x = x; f.l.position.x = x; });
+  }
   net.group.updateMatrixWorld(true);
   const segs = [];
   for (const f of net.faces) {
@@ -125,6 +130,7 @@ function newGame() {
   S.g = { cells, valid: a.valid, dups: a.dups, folded: false, answered: false };
   const g = S.g;
   build(cells, { colors: GAME_COLORS, flat: true });
+  if (!g.valid) { const d = collidingPairs(); if (d.length) g.dups = d; }
   const v = openView(); stage.place(v.target, v.sph);
   net.open = true;
   g.q = null;
@@ -136,29 +142,51 @@ function foldGame() {
   g.folded = true;
   setOpen(false);
   if (!g.valid) {
-    stage.flyTo(viewForPair(g.dups[0]), 1100);
-    // 撞在一起的两面：标红，外面那张往外挪一点避免重叠闪烁
+    stage.flyTo(viewFor(g.dups[0]), 1100);
+    // 撞面：标红、半透明，微微错开 0.04，折好后抖动一次
     const pair = g.dups[0].map((k) => net.byKey.get(k));
     g.pair = g.dups[0];
-    pair.forEach((f) => { f.m.material.color.set(RED); f.m.material.emissive.set(RED).multiplyScalar(0.12); });
-    pair[1].m.position.y = -0.045; pair[1].l.position.y = -0.045;
+    pair.forEach((f, i) => {
+      const m = f.m.material;
+      m.color.set(RED); m.emissive.set(RED).multiplyScalar(0.12); m.transparent = true; m.opacity = 0.6; m.depthWrite = false; m.needsUpdate = true;
+      const y = i === 0 ? 0.02 : -0.02; f.m.position.y = y; f.l.position.y = y;
+    });
+    net.shake = { t0: performance.now() + animTime(), faces: pair };
   }
   render();
   S.t = setTimeout(() => { if (S.g === g) { g.done = true; if (!g.valid) showCallout('撞在一起了！'); render(); } }, animTime());
 }
-// 折好后，镜头转到看得见「撞在一起的那两面」的位置
-function viewForPair(pair) {
-  const f = net.byKey.get(pair[0]);
+// 实际折叠（所有铰链转到 90°）后，每个面的中心位置
+function foldedCenters() {
   const saved = net.hinges.map((h) => h.pv.rotation[h.axis]);
   net.hinges.forEach((h) => (h.pv.rotation[h.axis] = h.sign * HALF));
   net.group.updateMatrixWorld(true);
-  const c = new THREE.Vector3().setFromMatrixPosition(f.m.matrixWorld);
+  const out = net.faces.map((f) => ({ key: f.key, c: new THREE.Vector3().setFromMatrixPosition(f.m.matrixWorld).sub(new THREE.Vector3(0, 0.5, 0)) }));
   net.hinges.forEach((h, i) => (h.pv.rotation[h.axis] = saved[i]));
   net.group.updateMatrixWorld(true);
-  const d = c.clone().sub(new THREE.Vector3(0, 0.5, 0));
-  let phi = 62, theta = Math.atan2(d.x, d.z) + THREE.MathUtils.degToRad(28);
-  if (d.y > 0.4) { phi = 38; theta = 0.6; } else if (d.y < -0.4) { phi = 118; theta = 0.6; }
-  return { target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(6.6, THREE.MathUtils.degToRad(phi), theta) };
+  return out;
+}
+// 撞面判定：折好后中心重合的面
+function collidingPairs() {
+  const by = new Map();
+  for (const { key: k, c } of foldedCenters()) { const id = [c.x, c.y, c.z].map((v) => Math.round(v * 20)).join(','); by.set(id, [...(by.get(id) || []), k]); }
+  return [...by.values()].filter((g) => g.length > 1);
+}
+// 折好后，镜头转到同时看得见「撞在一起的两面」和「缺的那一面开口」的位置
+function viewFor(pair) {
+  const cs = foldedCenters();
+  const dir = (c) => new THREE.Vector3(Math.round(c.x * 2) / 1, Math.round(c.y * 2) / 1, Math.round(c.z * 2) / 1).normalize();
+  const dp = dir(cs.find((x) => x.key === pair[0]).c);
+  const occ = new Set(cs.map((x) => { const d = dir(x.c); return d.x.toFixed(1) + ',' + d.y.toFixed(1) + ',' + d.z.toFixed(1); }));
+  const six = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].map((a) => new THREE.Vector3(...a));
+  const missing = six.find((d) => !occ.has(d.x.toFixed(1) + ',' + d.y.toFixed(1) + ',' + d.z.toFixed(1)));
+  let v = dp.clone();
+  if (missing) v.add(missing);
+  if (v.length() < 0.2) v = Math.abs(dp.y) > 0.5 ? new THREE.Vector3(1, 0.5 * Math.sign(dp.y), 1) : new THREE.Vector3(-dp.z, 0.5, dp.x);
+  v.normalize();
+  let phi = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(v.y, -1, 1)));
+  phi = Math.min(Math.max(phi, 48), 112);
+  return { target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(6.8, THREE.MathUtils.degToRad(phi), Math.atan2(v.x, v.z) + 0.42) };
 }
 function unfoldGame() {
   const g = S.g; if (!net || !g.folded) return;
@@ -166,7 +194,7 @@ function unfoldGame() {
   setOpen(true);
   render();
 }
-function showCallout(t) { clearCallout(); stage.overlay?.insertAdjacentHTML('beforeend', `<div class="callout" id="co" style="top:64px">${t}</div>`); }
+function showCallout(t) { clearCallout(); stage.overlay?.insertAdjacentHTML('beforeend', `<div class="callout" id="co">${t}</div>`); }
 function clearCallout() { host.querySelector('#co')?.remove(); }
 
 function miniNet(g) {
@@ -179,8 +207,8 @@ function miniNet(g) {
 
 // ———— 画面 ————
 const tabs = () => `<div class="tabs"><button class="btn small${S.tab === 'explore' ? ' on' : ''}" data-a="tab-explore">看展开图</button><button class="btn small${S.tab === 'game' ? ' on' : ''}" data-a="tab-game">能折吗？</button></div>`;
-const KEYS_E = '<div class="keys"><kbd>空白键</kbd> 展开／合起　<kbd>←</kbd><kbd>→</kbd> 换一种　<kbd>R</kbd> 复位视角</div>';
-const KEYS_G = '<div class="keys"><kbd>空白键</kbd> 折折看／下一题　<kbd>R</kbd> 复位视角</div>';
+const KEYS_E = () => keysHTML([['<kbd>空白键</kbd>', '展开／合起'], ['<kbd>←</kbd><kbd>→</kbd>', '换一种'], ['<kbd>R</kbd>', '复位视角']]);
+const KEYS_G = () => keysHTML([['<kbd>空白键</kbd>', '折折看／下一题'], ['<kbd>R</kbd>', '复位视角']]);
 
 function render() {
   if (!gl) { panel.innerHTML = tabs() + '<div class="readout"><div class="line">3D 画面打不开，这个模块需要 3D。</div></div>'; return; }
@@ -189,14 +217,14 @@ function render() {
     panel.innerHTML = tabs() + `<div class="readout"><div class="big" style="font-size:40px">第 ${S.i + 1} 种</div><div class="line">共 11 种。${net && net.open ? '展开了！' : '合起来是正方体。'}</div></div>
       <button class="btn s6 red" data-a="fold">${net && net.open ? '合起' : '展开'}</button>
       <div class="picker">${NETS.map((n, i) => thumb(n, i, i === S.i ? ' on' : '')).join('')}</div>
-      <div class="sound-note">点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。</div>` + KEYS_E;
+      <div class="sound-note">点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。</div>` + KEYS_E();
     return;
   }
   const g = S.g;
   if (!practice) {
     const res = g.done ? (g.valid ? '<b>能折成正方体！</b>六个面刚刚好。' : '<b>不能折。</b>红色的两个面撞在一起了，正方体还缺一个面。') : '先猜一猜，再按「折折看」。';
     panel.innerHTML = tabs() + `<div class="readout"><div class="q">这个能折成正方体吗？</div><div class="line">${res}</div></div>` + (g.done ? miniNet(g) : '') +
-      `<div class="grp6"><button class="btn s6 red" data-a="gfold">${g.folded ? '展开' : '折折看'}</button><button class="btn s6 green" data-a="gnext">下一题 ▶</button></div>` + KEYS_G;
+      `<div class="grp6"><button class="btn s6 red" data-a="gfold">${g.folded ? '展开' : '折折看'}</button><button class="btn s6 green" data-a="gnext">下一题 ▶</button></div>` + KEYS_G();
     return;
   }
   // 练习
@@ -218,7 +246,8 @@ function render() {
 function onPanel(e) {
   const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
   const a = b.dataset.a;
-  if (a === 'tab-explore') { S.tab = 'explore'; clearCallout(); showNet(S.i, false); }
+  if (a === 'keys') { toggleKeys(); render(); }
+  else if (a === 'tab-explore') { S.tab = 'explore'; clearCallout(); showNet(S.i, false); }
   else if (a === 'tab-game') { S.tab = 'game'; newGame(); }
   else if (a === 'fold') { if (net) { setOpen(!net.open); render(); } }
   else if (a === 'pick') pickNet(+b.dataset.i);
@@ -250,7 +279,6 @@ export default {
     body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div></div><div class="panel" id="panel"></div>';
     host = body.querySelector('#host'); panel = body.querySelector('#panel');
     gl = stage.mount(host, { home: viewNow, onFrame: frame }).ok;
-    if (gl) host.querySelector('.cv').insertAdjacentHTML('beforeend', '<div class="cap-tag">延伸活动（不在一年级 DSKP 内）</div>');
     net = null;
     if (gl) showNet(0, false);
     panel.addEventListener('click', onPanel);

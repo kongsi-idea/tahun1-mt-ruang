@@ -65,6 +65,7 @@ export function analyze(cells, root) {
   return { valid: !cyc && dups.length === 0, cyc, dups, faceOf };
 }
 
+// 含 2×2 方块的有环拼法也一定不能折（四格会让同一个面重叠），照样放进题库
 // 与 3D 折叠相同的根格选法
 export function pickRoot(cells) {
   const has = new Set(cells.map((p) => key(...p)));
@@ -100,7 +101,7 @@ export function buildPools() {
   for (const c of all) {
     const a = analyze(c, pickRoot(c));
     if (a.valid) valid.push(c);
-    else if (!a.cyc && a.dups.length) invalid.push({ cells: c, dups: a.dups });
+    else if (a.dups.length) invalid.push({ cells: c, dups: a.dups });
   }
   return { total: all.length, valid, invalid, cyclic: all.length - valid.length - invalid.length };
 }
