@@ -447,7 +447,7 @@ export default {
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
     offMode = ctx.onMode(() => { S.ch = null; S.gq = null; if (S.solid !== 'cube') render(); else if (S.tab === 'game') newGame(); else render(); });
     render();
-    window.__m5 = { newChal, S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet, G: () => G, selectSolid, netSets: () => netSets, gSetP, gOpen, gClose };
+    window.__m5 = { newChal, S: () => S, pools: () => pools, net: () => net, newGame, foldGame, showNet, G: () => G, selectSolid, netSets: () => netSets, gSetP, gOpen, gClose, gView };
   },
   unmount() {
     clearTimeout(S.t); G = null;

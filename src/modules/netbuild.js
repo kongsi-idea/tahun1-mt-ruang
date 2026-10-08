@@ -48,6 +48,7 @@ class Silhouette {
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
       F[t] = nx * nx + ny * ny + nz * nz < 1e-14 ? 2 : nx * (camPos.x - P[a]) + ny * (camPos.y - P[a + 1]) + nz * (camPos.z - P[a + 2]) > 0 ? 1 : 0; // 2＝零面积（锥尖那一圈），不参与
     }
+    for (let t = 0; t < F.length; t++) if (F[t] === 2 && F[t ^ 1] !== 2) F[t] = F[t ^ 1]; // 锥尖那圈的零面积三角形，跟同一格的另一个三角形同向
     const arr = this.lines.geometry.attributes.instanceStart.data.array; let n = 0;
     for (const e of this.edges) {
       if (F[e.t1] === F[e.t2] || F[e.t1] === 2 || F[e.t2] === 2 || n >= this.max) continue;
