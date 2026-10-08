@@ -1,6 +1,8 @@
 # 空间小天地 · 交接
 
 ## 🔄 第三轮进度（SPEC §8，2026-10-08 起）
+**状态：§8 全部 8 项完成，本机未部署。** 验收：build 成功；切换残留（含盖印章、5 种展开图）每步检查 3D 物件数／覆盖层／canvas 无残留；进出 4 轮 renderer 几何数不增长（回首页回到基线）；console 0 错 0 警告（顺手把 PCFSoftShadowMap 改成 PCFShadowMap，消掉 three 的弃用警告）；截图在 `~/Documents/my-agent/playwright-to-delete/ruang-p3-*.png`。
+已知：球体按老师追加指示不进展开图；盖印章仍可选球体（印不出图形）；真机未测。
 - 1 平面图形「角」→「顶点」：完成（95233c8）。圆圈＋数字标示，小挑战「有顶点的图形」。
 - 2 盖印章移出平面图形：完成。新模块 `src/modules/stamp.js`（路由 `#/stamp`，角标「小乐趣」）；`m2.js` 变成纯平面画面，不再挂 3D。
 

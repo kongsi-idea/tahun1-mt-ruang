@@ -32,7 +32,7 @@ class Stage3D {
     this.supported = true;
     const r = this.renderer;
     r.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
     this.scene = new THREE.Scene();
     this.persp = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
     this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
