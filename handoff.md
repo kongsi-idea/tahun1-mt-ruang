@@ -1,5 +1,11 @@
 # 空间小天地 · 交接
 
+## 🚀 上线（2026-10-08）
+- 正式网址：https://tahun1-mt-ruang.vercel.app（Vercel team kongsi-idea，项目 tahun1-mt-ruang）
+- GitHub：kongsi-idea/tahun1-mt-ruang（public），已加 `.github/workflows/deploy.yml`：push 到 main 自动生产部署。后备：teaching-tools 里 `npm run deploy -- tahun1-mt-ruang`
+- Hub：kongsi-idea/app.js 已登记 v1.0（standards 暂空：马来文 DSKP 用词未核对）
+- 待办：老师真机／课堂实测；对课本用词
+
 ## 🔄 第三轮进度（SPEC §8，2026-10-08 起）
 **状态：§8 全部 8 项完成，本机未部署。** 验收：build 成功；切换残留（含盖印章、5 种展开图）每步检查 3D 物件数／覆盖层／canvas 无残留；进出 4 轮 renderer 几何数不增长（回首页回到基线）；console 0 错 0 警告（顺手把 PCFSoftShadowMap 改成 PCFShadowMap，消掉 three 的弃用警告）；截图在 `~/Documents/my-agent/playwright-to-delete/ruang-p3-*.png`。
 已知：球体按老师追加指示不进展开图；盖印章仍可选球体（印不出图形）；真机未测。
