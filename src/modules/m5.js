@@ -62,7 +62,7 @@ function build(cells, { colors = COLORS, flat = false, name = '' } = {}) {
 }
 
 const closedView = () => ({ target: new THREE.Vector3(0, 0.5, 0), sph: new THREE.Spherical(6.6, THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(35)) });
-const openView = () => ({ target: net.center.clone(), sph: new THREE.Spherical(5.4 + 0.95 * Math.max(net.R, net.C), THREE.MathUtils.degToRad(14), 0) });
+const openView = () => ({ target: net.center.clone(), sph: new THREE.Spherical(5.4 + 0.95 * Math.max(net.R, net.C), THREE.MathUtils.degToRad(3), 0) });
 const viewNow = () => (S.solid !== 'cube' ? gView(G && G.to < 0.5) : net && net.open ? openView() : closedView());
 
 function setOpen(o, { fly = true } = {}) {
@@ -77,6 +77,7 @@ const animTime = () => dur(DUR) + dur(STEP) * net.maxD + 120;
 function frame(now) {
   if (S.solid !== 'cube') return gframe(now);
   if (!net) return;
+  { const mv = net.hinges.some((h) => Math.abs(h.cur - h.to) > 1e-3 || now - h.t0 - h.delay < dur(DUR)); if (net._mv && !mv && S.tab === 'explore') { net._mv = false; render(); } net._mv = net._mv || mv; }
   for (const h of net.hinges) {
     const t = Math.min(Math.max((now - h.t0 - h.delay) / dur(DUR), 0), 1);
     h.cur = h.from + (h.to - h.from) * ease(t);
@@ -250,13 +251,15 @@ function renderChal(practice) {
 const KEYS_E = () => keysHTML([['<kbd>空白键</kbd>', '展开／合起'], ['<kbd>←</kbd><kbd>→</kbd>', '换一种'], ['<kbd>R</kbd>', '复位视角']]);
 const KEYS_G = () => keysHTML([['<kbd>空白键</kbd>', '折折看／下一题'], ['<kbd>R</kbd>', '复位视角']]);
 
+const cubeBusy = () => !!net && net.hinges.some((h) => Math.abs(h.cur - h.to) > 1e-3);
+const cubeState = () => (cubeBusy() ? (net.open ? '正在展开…' : '正在合起…') : net && net.open ? '展开了！' : '合起来是正方体。');
 function render() {
   if (S.solid !== 'cube') return renderGeneric();
   if (!gl) { panel.innerHTML = tabs() + '<div class="readout"><div class="line">3D 画面打不开，这个模块需要 3D。</div></div>'; return; }
   const practice = ctxRef.getMode() === 'practice';
   if (S.tab === 'explore') {
-    panel.innerHTML = tabs() + `<div class="readout"><div class="big" style="font-size:40px">第 ${S.i + 1} 种</div><div class="line">共 11 种。${net && net.open ? '展开了！' : '合起来是正方体。'}</div></div>
-      <button class="btn s6 red" data-a="fold">${net && net.open ? '合起' : '展开'}</button>
+    panel.innerHTML = tabs() + `<div class="readout"><div class="big" style="font-size:40px">第 ${S.i + 1} 种</div><div class="line">共 11 种。${cubeState()}</div></div>
+      <button class="btn s6 red" data-a="fold"${cubeBusy() ? ' disabled' : ''}>${cubeBusy() ? (net.open ? '正在展开…' : '正在合起…') : net && net.open ? '合起' : '展开'}</button>
       <div class="picker">${NETS.map((n, i) => thumb(n, i, i === S.i ? ' on' : '')).join('')}</div>
       <div class="sound-note">点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。</div>` + KEYS_E();
     return;
@@ -326,7 +329,7 @@ function makeObj(solid, vi) {
 const variants = (solid) => (solid === 'cuboid' || solid === 'pyramid' ? getNetSets()[solid].list.length : 1);
 function gView(open) {
   const b = G.obj.bounds;
-  if (open) return { target: new THREE.Vector3(b.cu, 0, b.cv), sph: new THREE.Spherical(5.2 + 1.0 * Math.max(b.w, b.h * 0.9), THREE.MathUtils.degToRad(14), 0) };
+  if (open) return { target: new THREE.Vector3(b.cu, 0, b.cv), sph: new THREE.Spherical(5.2 + 1.0 * Math.max(b.w, b.h * 0.9), THREE.MathUtils.degToRad(3), 0) };
   const c = G.obj.solidCenter;
   return { target: c.clone(), sph: new THREE.Spherical(6.4 + (G.obj.kind === 'cone' || G.obj.kind === 'cyl' ? 0.4 : 0), THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(35)) };
 }
@@ -345,15 +348,23 @@ function selectSolid(id, vi = 0, { openFirst = true } = {}) {
   if (openFirst) S.t = setTimeout(() => { if (G && G.obj === obj) { gOpen(); render(); } }, 250);
 }
 const gMs = () => (G.obj.kind === 'poly' ? 1100 + 330 * 3 : 2400);
-function gSetP(p) { G.p = p; G.from = G.to = p; G.obj.setP(p); }
-function gOpen() { G.from = G.p; G.to = 0; G.t0 = performance.now(); G.ms = dur(gMs()) * G.p; stage.flyTo(gView(true), 1100); }
-function gClose() { G.from = G.p; G.to = 1; G.t0 = performance.now(); G.ms = dur(gMs()) * (1 - G.p); stage.flyTo(gView(false), 1100); }
+function gSetP(p) { G.p = p; G.from = G.to = p; G.obj.setP(p); render(); }
+function gOpen() { G.from = G.p; G.to = 0; G.t0 = performance.now(); G.ms = dur(gMs()) * G.p; stage.flyTo(gView(true), 1100); render(); }
+function gClose() { G.from = G.p; G.to = 1; G.t0 = performance.now(); G.ms = dur(gMs()) * (1 - G.p); stage.flyTo(gView(false), 1100); render(); }
+// 实际状态（给右边的文字和按钮用）：动画中＝正在展开／正在合起；停住时看 p
+function gState() {
+  if (!G) return { k: 'closed', text: '合起来了', btn: '展开', busy: false };
+  if (G.p !== G.to) return G.to < 0.5 ? { k: 'opening', text: '正在展开…', btn: '正在展开…', busy: true } : { k: 'closing', text: '正在合起…', btn: '正在合起…', busy: true };
+  if (G.p < 0.01) return { k: 'open', text: '展开了', btn: '合起', busy: false };
+  if (G.p > 0.99) return { k: 'closed', text: '合起来了', btn: '展开', busy: false };
+  return { k: 'half', text: '半开着', btn: '合起', busy: false };
+}
 function gframe(now) {
   if (!G) return;
   if (G.p !== G.to) {
     const t = G.ms <= 0 ? 1 : Math.min(1, Math.max(0, (now - G.t0) / G.ms));
     G.p = G.from + (G.to - G.from) * t; G.obj.setP(G.p);
-    if (t >= 1) { G.p = G.to; render(); }
+    if (t >= 1) { G.p = G.to; G.obj.setP(G.p); render(); }
   }
   G.obj.update(stage.camera);
   stage.cornerSegs = G.obj.segs();
@@ -368,30 +379,30 @@ function thumbSVG(item, solid, on) {
 function renderGeneric() {
   syncSolidBar();
   if (!gl) { panel.innerHTML = '<div class="readout"><div class="line">3D 画面打不开，这个模块需要 3D。</div></div>'; return; }
-  const id = S.solid, name = SNAME5[id], practice = ctxRef.getMode() === 'practice', open = gIsOpen();
+  const id = S.solid, name = SNAME5[id], practice = ctxRef.getMode() === 'practice', st = gState();
   const nv = variants(id), set = nv > 1 ? getNetSets()[id] : null;
   let note = '';
   if (id === 'cylinder') note = '两个圆形加一个长方形：长方形的长＝圆的一圈。';
   else if (id === 'cone') note = '一个圆形加一个扇形：扇形的弧长＝圆的一圈。';
   else note = '点小图换一种。拖拽可以旋转，双指／滚轮可以缩放。';
-  let h = `<div class="readout"><div class="big" style="font-size:40px">${name}</div><div class="line">${nv > 1 ? `第 ${S.vi + 1} / ${nv} 种` : '展开图'} · ${open ? '展开了' : '合起来了'}</div></div>` +
-    `<button class="btn s6 red" data-a="gfold">${open ? '合起' : '展开'}</button>`;
+  let h = `<div class="readout"><div class="big" style="font-size:40px">${name}</div><div class="line">${nv > 1 ? `第 ${S.vi + 1} / ${nv} 种` : '展开图'} · ${st.text}</div></div>` +
+    `<button class="btn s6 red" data-a="gfold"${st.busy ? ' disabled' : ''}>${st.btn}</button>`;
   if (set) h += `<div class="picker">${set.list.map((it, i) => `<button class="btn th${i === S.vi ? ' on' : ''}" data-a="gvar" data-i="${i}" aria-label="第${i + 1}种展开图" style="padding:3px">${thumbSVG(it, id)}</button>`).join('')}</div>`;
   h += `<div class="sound-note">${note}</div>`;
   if (practice) {
     if (!S.gq) { const others = shuffle(SOLIDS.filter(([x]) => x !== id)).slice(0, 2), opts = shuffle([[id, name], ...others]); S.gq = { title: '这个展开图折起来是什么立体？', labels: opts.map((x) => x[1]), correct: opts.findIndex((x) => x[0] === id), cols: 1, goodMsg: `是${name}。`, badMsg: `是${name}。折起来看看。`, onDone: () => { if (G && gIsOpen()) { gClose(); } } }; }
     panel.innerHTML = h + '<div id="gqbox" class="qbox"></div>';
-    renderQuiz(panel.querySelector('#gqbox'), S.gq, { next: () => { S.gq = null; if (G && !gIsOpen()) gOpen(); render(); }, burstHost: host });
+    renderQuiz(panel.querySelector('#gqbox'), S.gq, { next: () => { S.gq = null; if (G && gState().k === 'closed') gOpen(); else render(); }, burstHost: host });
   } else panel.innerHTML = h + KEYS_E();
 }
 function genericAction(a, b) {
   if (a === 'keys') { toggleKeys(); render(); return true; }
-  if (a === 'gfold') { if (G) { (gIsOpen() ? gClose() : gOpen()); render(); } return true; }
+  if (a === 'gfold') { if (G && !gState().busy) (gState().k === 'closed' ? gOpen() : gClose()); return true; }
   if (a === 'gvar') { selectSolid(S.solid, +b.dataset.i); return true; }
   return false;
 }
 function genericKey(e) {
-  if (e.code === 'Space') { e.preventDefault(); if (e.type === 'keyup' || !G) return; (gIsOpen() ? gClose() : gOpen()); render(); return; }
+  if (e.code === 'Space') { e.preventDefault(); if (e.type === 'keyup' || !G || gState().busy) return; (gState().k === 'closed' ? gOpen() : gClose()); return; }
   if (e.type !== 'keydown') return;
   if (e.key === 'r' || e.key === 'R') stage.reset();
   else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && variants(S.solid) > 1) { const n = variants(S.solid); selectSolid(S.solid, (S.vi + (e.key === 'ArrowRight' ? 1 : n - 1)) % n); }
