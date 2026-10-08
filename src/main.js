@@ -9,6 +9,7 @@ const MODS = {
   m3: () => import('./modules/m3.js'),
   m4: () => import('./modules/m4.js'),
   m5: () => import('./modules/m5.js'),
+  stamp: () => import('./modules/stamp.js'),
 };
 let cur = null, token = 0, offMode = null;
 
@@ -33,7 +34,7 @@ async function route() {
   if (my !== token) return;
   const root = document.createElement('div'); root.className = 'module';
   const top = document.createElement('div'); top.className = 'top';
-  top.innerHTML = `<a class="btn small" href="#/" style="text-decoration:none;display:inline-flex;align-items:center">← 回首页</a><h1>${mod.title}</h1>${mod.ext ? '<span class="ext-tag">延伸活动（不在一年级 DSKP 内）</span>' : ''}<span class="grow"></span>`;
+  top.innerHTML = `<a class="btn small" href="#/" style="text-decoration:none;display:inline-flex;align-items:center">← 回首页</a><h1>${mod.title}</h1>${mod.badge ? `<span class="ext-tag${mod.badge === '小乐趣' ? ' fun' : ''}">${mod.badge}</span>` : ''}<span class="grow"></span>`;
   const mt = modeToggle(); top.appendChild(mt.el);
   const body = document.createElement('div'); body.className = 'body';
   root.append(top, body); app.appendChild(root);
@@ -52,6 +53,7 @@ const ICON = {
   m3: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><rect x="5" y="14" width="34" height="34" fill="#F2564B" ${SW}/><circle cx="60" cy="31" r="17" fill="#FFC93C" ${SW}/><rect x="81" y="14" width="34" height="34" fill="#F2564B" ${SW}/><rect x="5" y="68" width="34" height="34" fill="#FFC93C" ${SW}/><circle cx="60" cy="85" r="17" fill="#fff" ${SW}/><text x="60" y="97" font-size="32" font-weight="900" text-anchor="middle" fill="#3B2A1A">?</text><rect x="81" y="68" width="34" height="34" fill="#fff" ${SW}/></svg>`,
   m4: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><path d="M12,108 L12,70 L44,24 L76,70 L76,108 Z" fill="#3E8EDE"/><path d="M12,70 L44,24 L76,70 Z" fill="#F2564B"/><rect x="76" y="80" width="32" height="28" fill="#46B97A"/><path d="M12,108 L12,70 L44,24 L76,70 L76,108 Z M12,70 L76,70" fill="none" ${SW} stroke-linejoin="miter"/><path d="M76,80 L108,80 L108,108 L76,108" fill="none" ${SW} stroke-linejoin="miter"/></svg>`,
   m5: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><g ${SW}><rect x="34" y="14" width="26" height="26" fill="#F2564B"/><rect x="8" y="40" width="26" height="26" fill="#FFC93C"/><rect x="34" y="40" width="26" height="26" fill="#3E8EDE"/><rect x="60" y="40" width="26" height="26" fill="#46B97A"/><rect x="86" y="40" width="26" height="26" fill="#FF8A3D"/><rect x="60" y="66" width="26" height="26" fill="#8E6BD8"/></g></svg>`,
+  stamp: `<svg class="ic" viewBox="0 0 120 120" aria-hidden="true"><path d="M46,12 L74,12 L74,42 L98,42 L98,58 L22,58 L22,42 L46,42 Z" fill="#8E6BD8"/><rect x="22" y="58" width="76" height="20" fill="#F2564B"/><path d="M46,12 L74,12 L74,42 L98,42 L98,78 L22,78 L22,42 L46,42 Z M22,58 L98,58" fill="none" ${SW} stroke-linejoin="miter"/><rect x="32" y="92" width="56" height="16" fill="#FFC93C" ${SW}/></svg>`,
 };
 const LOGO = `<svg viewBox="0 0 120 120" aria-hidden="true"><polygon points="60,16 100,39 60,62 20,39" fill="#FFC93C"/><polygon points="20,39 60,62 60,108 20,85" fill="#F2564B"/><polygon points="60,62 100,39 100,85 60,108" fill="#3E8EDE"/><path d="M60,62 L20,39 M60,62 L100,39 M60,62 L60,108" fill="none" stroke="#3B2A1A" stroke-width="7"/><path d="M60,16 L100,39 L100,85 L60,108 L20,85 L20,39 Z" fill="none" stroke="#3B2A1A" stroke-width="7"/></svg>`;
 const CAP = { teach: '老师操作，学生先猜后揭晓', practice: '自己点选答案，答错也没关系' };
@@ -79,6 +81,7 @@ function home() {
     ${card('m3', '', 'M3 模式排列', '找规律，猜一猜')}
     ${card('m4', '', 'M4 创意图案', '拼图案，搭模型')}
     ${card('m5', 'm5', 'M5 展开图', '11 种 · 能折吗？', '延伸')}
+    ${card('stamp', '', '盖印章', '压一压，印出形状', '小乐趣')}
   </div>`;
   const cap = h.querySelector('#modeCap');
   const sync = () => { cap.innerHTML = `<b>${NAME[getMode()]}</b>${CAP[getMode()]}`; };

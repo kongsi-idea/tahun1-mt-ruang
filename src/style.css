@@ -200,7 +200,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   .chips{gap:8px;padding-bottom:8px}
 }
 @media (max-width:520px){
-  .top .ext-tag{display:none}
+  .top .ext-tag{font-size:18px;padding:1px 8px}
   .mk .n{min-width:38px;height:38px;font-size:24px}
   .mk .n small{font-size:20px}
   .opt{font-size:26px}
@@ -310,3 +310,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   .stage.life-on.reveal .life .ans{font-size:22px;min-height:40px;padding:2px 12px}
 }
 .opts.c4 .opt{font-size:23px;padding:8px 4px}
+
+/* ——— 第三轮 ——— */
+.ext-tag.fun{background:var(--orange);color:var(--ink)}
+.stage.svg-only{background:#FFFBF0}
+.row2 .btn{min-width:0}

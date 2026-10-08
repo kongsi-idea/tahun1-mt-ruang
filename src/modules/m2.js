@@ -1,17 +1,15 @@
-// M2 平面图形（7.2）：认识、边／顶点／曲线、藏在立体里的平面（盖印章，复用 M1 的 3D 立体）、小挑战（7.3）
-import { stage, THREE, ease, dur, reducedMotion } from '../core/stage3d.js';
-import { INK, lineFrom, circlePts } from '../core/ink.js';
+// 平面图形（7.2）：认识、边／顶点／曲线、小挑战（7.3）。纯平面画面，不用 3D
+import { INK } from '../core/ink.js';
+import { reducedMotion } from '../core/stage3d.js';
 import { FLAT, FLAT_IDS, countOf, hasVertex, flatSVG, flatIcon, PAL } from '../core/flat.js';
 import { renderQuiz, shuffle, pick } from '../core/quiz.js';
-import { buildShape, SHAPE_IDS, NAMES, worldSegs } from './shapes.js';
 import { keysHTML, toggleKeys } from '../core/keys.js';
 
-const rad = THREE.MathUtils.degToRad;
 const KIND = { edge: { zh: '直线边', unit: '条', color: 'line' }, vert: { zh: '顶点', unit: '个' }, curve: { zh: '曲线', unit: '条', color: 'curve' } };
 const FINGER = '<svg class="finger" viewBox="0 0 84 84"><rect x="32" y="4" width="22" height="48" rx="11" fill="#fff" stroke="#3B2A1A" stroke-width="5"/><rect x="14" y="40" width="58" height="40" rx="16" fill="#fff" stroke="#3B2A1A" stroke-width="5"/></svg>';
-const K = [['<kbd>空白键</kbd>', '揭晓／下一步'], ['<kbd>←</kbd><kbd>→</kbd>', '上一项／下一项'], ['<kbd>R</kbd>', '复位视角']];
+const K = [['<kbd>空白键</kbd>', '揭晓／下一步'], ['<kbd>←</kbd><kbd>→</kbd>', '上一项／下一项']];
 
-let S, host, panel, chipsEl, flatEl, sqEl, gl, ctxRef, offMode, ro, stamp, imprint;
+let S, host, panel, chipsEl, flatEl, sqEl, ctxRef, offMode, ro;
 
 // ———— 数据：数量表（由数据得出）————
 const total = (id, k) => { const c = countOf(id); return k === 'edge' ? c.lines : k === 'vert' ? c.verts : c.curves; };
@@ -117,106 +115,9 @@ function paintChallenge() {
   ch.verified = checkChallenge(ch, sqEl.querySelector('svg'));
 }
 
-// ———— 立体里的平面（盖印章）————
-function planarFaces(sh) { return sh.faces.filter((f) => f.flat); }
-function faceKind(f) {
-  if (f.flat.circle) return 'circle';
-  const p = f.flat.pts;
-  if (p.length === 3) return 'tri';
-  const d = (a, b) => a.distanceTo(b);
-  return Math.abs(d(p[0], p[1]) - d(p[1], p[2])) < 1e-4 ? 'square' : 'rect';
-}
-const home3 = () => ({ target: new THREE.Vector3(0, 1.5, 0), sph: new THREE.Spherical(stage.size.w / stage.size.h < 1.25 ? 10 : 9, rad(66), rad(30)) });
-
-function loadSolid(i) {
-  S.solid = i; S.faceNo = 0; S.stamped = null; S.stampAnim = null; S.revealed = false;
-  if (!gl) return;
-  stage.clear(); imprint = null; stage.cornerSegs = [];
-  stamp = buildShape(SHAPE_IDS[i]);
-  stage.content.add(stamp.group);
-  stage.setFootprint(...stamp.foot);
-}
-function startStamp() {
-  if (!gl || S.stampAnim) return;
-  if (imprint) { stage.content.remove(imprint.g); imprint.g.traverse((o) => { o.geometry?.dispose(); if (o.material && !o.material.userData?.shared) o.material.dispose(); }); imprint = null; }
-  stamp.group.visible = true; stamp.group.position.set(0, 0, 0); stamp.group.quaternion.identity();
-  const list = planarFaces(stamp), g = stamp.group;
-  S.revealed = false; S.stamped = null;
-  let face = null, qt = new THREE.Quaternion();
-  if (list.length) {
-    const diff = list.filter((f) => faceKind(f) !== S.lastKind), pool = diff.length ? diff : list;
-    face = pool[S.faceNo % pool.length]; S.faceNo++; S.lastKind = faceKind(face);
-    qt.setFromUnitVectors(face.flat.normal.clone().normalize(), new THREE.Vector3(0, -1, 0));
-    // 旋转后最低点要贴地
-  }
-  const rot = qt.clone();
-  g.quaternion.copy(rot); g.position.set(0, 0, 0); g.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(g, false);
-  const rest = -box.min.y;
-  let cxz = new THREE.Vector3();
-  if (face) { cxz = (face.flat.center || new THREE.Vector3()).clone().applyQuaternion(rot); }
-  g.quaternion.identity(); g.position.set(0, 0, 0);
-  S.stampAnim = { t0: performance.now(), rot, rest, off: face ? new THREE.Vector3(-cxz.x, 0, -cxz.z) : new THREE.Vector3(), face, imprinted: false };
-}
-function makeImprint(face, rot, off) {
-  const g = new THREE.Group();
-  let pts;
-  if (face.flat.circle) pts = circlePts(face.flat.circle, 0.014, 96).map((p) => p.add(new THREE.Vector3(0, 0, 0)));
-  else pts = [...face.flat.pts, face.flat.pts[0]].map((p) => p.clone().applyQuaternion(rot).add(off).setY(0.014));
-  if (face.flat.circle) pts = pts.map((p) => p.setY(0.014));
-  const open = pts.slice(0, -1);
-  const pos = [];
-  for (let i = 1; i < open.length - 1; i++) pos.push(open[0].x, 0.012, open[0].z, open[i + 1].x, 0.012, open[i + 1].z, open[i].x, 0.012, open[i].z);
-  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  const col = face.mesh.material.color.clone();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
-  g.add(mesh, lineFrom(pts));
-  const segs = [];
-  for (let i = 0; i < open.length; i++) segs.push([open[i].clone(), open[(i + 1) % open.length].clone()]);
-  return { g, segs: face.flat.circle ? [] : segs };
-}
-function stampFrame(now) {
-  const a = S.stampAnim; if (!a) return;
-  const t = now - a.t0, g = stamp.group, D = reducedMotion() ? 0.01 : 1;
-  const T1 = 700 * D, T2 = 1050 * D, T3 = 1500 * D, T4 = 2050 * D;
-  const lerp = THREE.MathUtils.lerp;
-  if (t >= T2 && !a.imprinted && a.face) { // 画面很卡时可能整段被跳过，所以在这里统一补上
-    a.imprinted = true;
-    imprint = makeImprint(a.face, a.rot, a.off); stage.content.add(imprint.g);
-    S.stamped = faceKind(a.face);
-  }
-  if (t < T1) {
-    const e = ease(t / T1); g.quaternion.identity().slerp(a.rot, e);
-    g.position.set(lerp(0, a.off.x, e), lerp(0, 2.4 + a.rest, e), lerp(0, a.off.z, e));
-  } else if (t < T2) {
-    const e = ease((t - T1) / (T2 - T1)); g.quaternion.copy(a.rot);
-    g.position.set(a.off.x, lerp(2.4 + a.rest, a.rest, e), a.off.z);
-  } else if (t < T3) {
-    g.quaternion.copy(a.rot); g.position.set(a.off.x, a.rest, a.off.z);
-    if (!a.imprinted && a.face) {
-      a.imprinted = true;
-      imprint = makeImprint(a.face, a.rot, a.off); stage.content.add(imprint.g);
-      S.stamped = faceKind(a.face);
-    }
-  } else if (t < T4) {
-    const e = ease((t - T3) / (T4 - T3)); g.position.set(a.off.x, lerp(a.rest, a.rest + 6, e), a.off.z);
-  } else {
-    g.visible = false; S.stampAnim = null; S.stampDone = true; render();
-    return;
-  }
-  const rise = Math.max(0, (g.position.y - a.rest) / 2.5);
-  stage.setFootprint(stamp.foot[0], stamp.foot[1], a.face || t < T1 ? (a.face ? 1 : 0.6) * Math.max(0, 1 - rise) : 0.5);
-}
-function frame(now) {
-  if (S.tab !== 'stamp' || !stamp) return;
-  stampFrame(now);
-  if (stamp.group.visible) { stamp.update(stage.camera); stage.cornerSegs = worldSegs(stamp).concat(imprint ? imprint.segs : []); }
-  else stage.cornerSegs = imprint ? imprint.segs : [];
-}
-
 // ———— 面板 ————
-const TABS = [['know', '认识'], ['stamp', '盖印章'], ['chal', '小挑战']];
-const tabsHTML = () => `<div class="tabs grid g3">${TABS.map(([k, t]) => `<button class="btn small${S.tab === k ? ' on' : ''}" data-a="tab-${k}">${t}</button>`).join('')}</div>`;
+const TABS = [['know', '认识'], ['chal', '小挑战']];
+const tabsHTML = () => `<div class="tabs grid">${TABS.map(([k, t]) => `<button class="btn small${S.tab === k ? ' on' : ''}" data-a="tab-${k}">${t}</button>`).join('')}</div>`;
 const KEYS = () => keysHTML(K);
 
 function toolsHTML() {
@@ -262,11 +163,6 @@ function nextKnow() {
   let i; do { i = Math.floor(Math.random() * 4); } while (i === S.idx);
   S.idx = i; S.name = false; S.kind = null; S.n = 0; newKnowQ(); render();
 }
-function newStampQ() {
-  const kind = S.stamped, ids = shuffle([kind, ...shuffle(FLAT_IDS.filter((x) => x !== kind)).slice(0, 2)]);
-  S.q = { type: 'stamp', title: '印出来的是什么形状？', labels: ids.map((x) => FLAT[x].name), correct: ids.indexOf(kind), cols: 1, goodMsg: `是「${FLAT[kind].name}」。`, badMsg: `正确答案是「${FLAT[kind].name}」。` };
-}
-
 function nameTag() {
   if (!host) return;
   let t = host.querySelector('.tag');
@@ -292,33 +188,16 @@ function pickShape(i) { S.idx = i; S.name = false; S.kind = null; S.n = 0; S.cur
 
 function render() {
   const practice = ctxRef.getMode() === 'practice';
-  const flatTab = S.tab !== 'stamp';
-  host.classList.toggle('svg-on', flatTab);
-  stage.paused = flatTab || !gl;
-  if (flatEl) { flatEl.style.display = flatTab ? '' : 'none'; if (!flatTab && sqEl) sqEl.innerHTML = ''; }
   nameTag(); renderChips();
-  if (flatTab) { fitFlat(); if (S.tab !== 'chal') renderFlat(); else { if (!S.ch) newChallenge(); paintChallenge(); } }
+  fitFlat(); if (S.tab !== 'chal') renderFlat(); else { if (!S.ch) newChallenge(); paintChallenge(); }
   if (S.tab === 'know') {
     if (!practice) {
       panel.innerHTML = tabsHTML() + `<div class="grp6"><button class="btn s4 yellow" data-a="name">${S.name ? '隐藏名称' : '显示名称'}</button><button class="btn s2" data-a="clear"${S.kind || S.name ? '' : ' disabled'}>清除</button></div>` + toolsHTML() + readout() + KEYS();
     } else {
-      if (!S.q || S.q.stampq) newKnowQ();
+      if (!S.q) newKnowQ();
       const extra = S.q.type === 'count' ? toolsHTML() : '';
       panel.innerHTML = tabsHTML() + '<div id="qbox" class="qbox"></div>';
       renderQuiz(panel.querySelector('#qbox'), S.q, { next: nextKnow, burstHost: host, extra });
-    }
-  } else if (S.tab === 'stamp') {
-    const busy = !!S.stampAnim;
-    const chips = `<div class="row2" style="grid-template-columns:repeat(3,1fr)">${SHAPE_IDS.map((id, i) => `<button class="btn small${S.solid === i ? ' on' : ''}" data-a="solid-${i}">${NAMES[id]}</button>`).join('')}</div>`;
-    const sphere = SHAPE_IDS[S.solid] === 'sphere';
-    if (!practice) {
-      const res = S.stamped ? (S.revealed ? `<b>印出来的是「${FLAT[S.stamped].name}」</b>。` : '印出来的图形是什么？先猜一猜。') : sphere && S.stampDone ? '<b>球体没有平面</b>，压不出图形。' : '把立体的一个面压在地上，会留下什么形状？';
-      panel.innerHTML = tabsHTML() + chips + `<div class="readout"><div class="q">${res}</div></div><div class="grp6"><button class="btn s6 red" data-a="stamp"${busy ? ' disabled' : ''}>盖印章</button><button class="btn s6 yellow" data-a="reveal"${S.stamped && !S.revealed ? '' : ' disabled'}>揭晓形状</button></div>` + KEYS();
-    } else {
-      if (S.stamped && !S.q) newStampQ();
-      panel.innerHTML = tabsHTML() + chips + `<button class="btn s6 red" data-a="stamp"${busy ? ' disabled' : ''}>盖印章</button><div id="qbox" class="qbox"></div>`;
-      if (S.stamped && S.q) renderQuiz(panel.querySelector('#qbox'), S.q, { next: () => { S.q = null; S.stamped = null; S.faceNo = 0; if (imprint) { stage.content.remove(imprint.g); imprint = null; } stamp.group.visible = true; stamp.group.position.set(0, 0, 0); stamp.group.quaternion.identity(); render(); }, burstHost: host });
-      else panel.querySelector('#qbox').innerHTML = `<div class="readout"><div class="q">${sphere && S.stampDone ? '球体没有平面，压不出图形。换一个立体试试。' : '按「盖印章」，看看印出什么形状。'}</div></div>`;
     }
   } else if (S.tab === 'chal') {
     if (!S.ch) newChallenge();
@@ -336,10 +215,6 @@ function setTab(t) {
   if (S.tab === t) return;
   S.tab = t; S.q = null; S.name = false; S.kind = null; S.n = 0; S.cur = -1;
   host.querySelectorAll('.finger,.callout').forEach((e) => e.remove());
-  if (t === 'stamp') {
-    loadSolid(S.solid); S.stampDone = false;
-    if (gl) { stage.setHome(home3); const h0 = home3(); stage.fly = null; stage.controls.enabled = true; stage.place(h0.target, h0.sph); }
-  } else if (gl) { stage.clear(); stage.cornerSegs = []; stamp = null; imprint = null; S.stampAnim = null; }
   if (t === 'chal') { S.ch = null; }
   render();
 }
@@ -355,9 +230,6 @@ function onPanel(e) {
   else if (a === 'all') { if (S.kind) { S.n = total(id, S.kind); S.cur = -1; render(); } }
   else if (a === 'clear') { S.name = false; S.kind = null; S.n = 0; render(); }
   else if (a === 'name') { S.name = !S.name; render(); }
-  else if (a.startsWith('solid-')) { loadSolid(+a.slice(6)); S.stampDone = false; S.q = null; render(); }
-  else if (a === 'stamp') { S.q = null; S.stampDone = false; startStamp(); render(); }
-  else if (a === 'reveal') { S.revealed = true; render(); }
   else if (a === 'chreveal') { S.ch.shown = !S.ch.shown; paintChallenge(); render(); }
   else if (a === 'chnext') { newChallenge(); render(); }
 }
@@ -371,36 +243,32 @@ function onKey(e) {
     e.preventDefault(); if (e.type === 'keyup') return;
     if (!teach) { panel.querySelector('#qnext')?.style.visibility !== 'hidden' && panel.querySelector('#qnext')?.click(); return; }
     if (S.tab === 'know') { if (S.kind) step(); else if (!S.name) { S.name = true; render(); } else pickShape((S.idx + 1) % 4); }
-    else if (S.tab === 'stamp') { if (!S.stampAnim) { if (S.stamped && !S.revealed) { S.revealed = true; render(); } else { startStamp(); render(); } } }
     else if (S.tab === 'chal') { if (!S.ch.shown) { S.ch.shown = true; paintChallenge(); render(); } else { newChallenge(); render(); } }
     return;
   }
   if (e.type !== 'keydown') return;
-  if (e.key === 'r' || e.key === 'R') stage.reset();
-  else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && teach && S.tab === 'know') pickShape((S.idx + (e.key === 'ArrowRight' ? 1 : 3)) % 4);
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && teach && S.tab === 'know') pickShape((S.idx + (e.key === 'ArrowRight' ? 1 : 3)) % 4);
 }
 
 export default {
-  title: 'M2 平面图形',
+  title: '平面图形',
   mount(body, ctx) {
     ctxRef = ctx;
-    S = { tab: 'know', idx: 0, name: false, kind: null, n: 0, cur: -1, solid: 0, faceNo: 0, stamped: null, stampAnim: null, stampDone: false, revealed: false, q: null, ch: null, colors: { square: '#F2564B', rect: '#FFC93C', tri: '#46B97A', circle: '#3E8EDE' } };
-    body.innerHTML = '<div class="stagecol"><div class="stage" id="host"></div><div class="chips" id="chips"></div></div><div class="panel" id="panel"></div>';
+    S = { tab: 'know', idx: 0, name: false, kind: null, n: 0, cur: -1, q: null, ch: null, colors: { square: '#F2564B', rect: '#FFC93C', tri: '#46B97A', circle: '#3E8EDE' } };
+    body.innerHTML = '<div class="stagecol"><div class="stage svg-only" id="host"><div class="cv"></div></div><div class="chips" id="chips"></div></div><div class="panel" id="panel"></div>';
     host = body.querySelector('#host'); panel = body.querySelector('#panel'); chipsEl = body.querySelector('#chips');
-    gl = stage.mount(host, { home: home3, onFrame: frame }).ok;
-    const cv = host.querySelector('.cv') || host;
+    const cv = host.querySelector('.cv');
     flatEl = document.createElement('div'); flatEl.className = 'flat'; sqEl = document.createElement('div'); sqEl.className = 'sq'; flatEl.appendChild(sqEl); cv.appendChild(flatEl);
     ro = new ResizeObserver(() => fitFlat()); ro.observe(flatEl);
-    stamp = null; imprint = null;
     panel.addEventListener('click', onPanel);
     document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
-    offMode = ctx.onMode(() => { S.q = null; S.name = false; S.kind = null; S.n = 0; S.ch = null; if (S.tab === 'stamp') { loadSolid(S.solid); } render(); });
+    offMode = ctx.onMode(() => { S.q = null; S.name = false; S.kind = null; S.n = 0; S.ch = null; render(); });
     render();
-    window.__m2 = { S: () => S, table: m2Table, total, makeChallenge, challengeSVG, checkChallenge, tab: setTab, pickShape, newChallenge, startStamp, loadSolid };
+    window.__m2 = { S: () => S, table: m2Table, total, makeChallenge, challengeSVG, checkChallenge, tab: setTab, pickShape, newChallenge };
   },
   unmount() {
     document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);
-    offMode?.(); ro?.disconnect(); stamp = null; imprint = null;
-    stage.unmount(); delete window.__m2;
+    offMode?.(); ro?.disconnect();
+    delete window.__m2;
   },
 };
